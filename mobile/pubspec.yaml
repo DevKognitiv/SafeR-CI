@@ -1,0 +1,68 @@
+name: safer_ci
+description: SafeR CI - Safety & Emergency Response Platform for Côte d'Ivoire
+version: 0.1.0+1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.4
+
+  # Navigation
+  go_router: ^13.2.0
+
+  # Network
+  dio: ^5.4.1
+  retrofit: ^4.1.0
+
+  # Location
+  geolocator: ^11.0.0
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+
+  # Local storage
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.2.3
+
+  # Notifications
+  firebase_core: ^2.27.0
+  firebase_messaging: ^14.7.19
+  flutter_local_notifications: ^17.0.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+  lottie: ^3.1.0
+  cached_network_image: ^3.3.1
+
+  # Utils
+  intl: ^0.19.0
+  url_launcher: ^6.2.5
+  permission_handler: ^11.3.0
+  connectivity_plus: ^6.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.3.9
+  retrofit_generator: ^8.1.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
+  fonts:
+    - family: SafeR
+      fonts:
+        - asset: assets/fonts/SafeR-Regular.ttf
