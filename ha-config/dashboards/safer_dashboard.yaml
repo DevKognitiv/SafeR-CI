@@ -1,0 +1,49 @@
+# SafeR CI — Lovelace Dashboard
+title: SafeR CI Dashboard
+views:
+  - title: Vue d'ensemble
+    icon: mdi:shield-home
+    cards:
+      - type: alarm-panel
+        entity: alarm_control_panel.safer_alarm
+        name: Système SafeR
+      - type: entities
+        title: Capteurs d'urgence
+        entities:
+          - entity: group.panic_buttons
+            name: Boutons Panique
+            icon: mdi:alarm-light
+          - entity: group.smoke_sensors
+            name: Détecteurs Fumée
+            icon: mdi:smoke-detector
+          - entity: group.flood_sensors
+            name: Capteurs Inondation
+            icon: mdi:water-alert
+      - type: map
+        title: Localisation Hub
+        entities:
+          - entity: device_tracker.hub_location
+        hours_to_show: 1
+      - type: history-graph
+        title: Historique Alertes (24h)
+        hours_to_show: 24
+        entities:
+          - entity: group.panic_buttons
+            name: Panique
+          - entity: group.smoke_sensors
+            name: Fumée
+          - entity: group.flood_sensors
+            name: Inondation
+
+  - title: Statut Système
+    icon: mdi:cog
+    cards:
+      - type: entities
+        title: Connexion & Statut
+        entities:
+          - entity: binary_sensor.safer_api_online
+            name: API SafeR
+          - entity: sensor.mqtt_connected
+            name: MQTT Broker
+          - entity: sensor.hub_uptime
+            name: Uptime Hub
