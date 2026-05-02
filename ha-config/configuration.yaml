@@ -1,0 +1,68 @@
+# SafeR CI — Home Assistant Master Configuration
+# Deploys on Raspberry Pi 4 per neighborhood hub
+
+homeassistant:
+  name: "SafeR Hub"
+  latitude: 5.3600       # Abidjan default (override per deployment)
+  longitude: -4.0083
+  elevation: 100
+  unit_system: metric
+  time_zone: Africa/Abidjan
+  country: CI
+  language: fr
+  currency: XOF
+
+# Enable the default configuration
+default_config:
+
+# HTTP configuration
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+
+# MQTT broker (Mosquitto add-on)
+mqtt:
+  broker: localhost
+  port: 1883
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: true
+  discovery_prefix: homeassistant
+
+# Logger
+logger:
+  default: warning
+  logs:
+    homeassistant.components.mqtt: info
+    custom_components.safer_ci: debug
+
+# Recorder (local DB)
+recorder:
+  db_url: !secret db_url
+  purge_keep_days: 30
+
+# Notify integrations
+notify:
+  - platform: twilio_sms
+    name: sms_alert
+    from_number: !secret twilio_from
+  - platform: rest
+    name: safer_api
+    resource: !secret safer_api_webhook_url
+    method: POST
+
+# SafeR CI automations
+automation: !include_dir_merge_list automations/
+
+# Lovelace dashboards
+lovelace:
+  mode: yaml
+  resources: []
+  dashboards:
+    safer-dashboard:
+      mode: yaml
+      title: SafeR CI
+      icon: mdi:shield-home
+      show_in_sidebar: true
+      filename: dashboards/safer_dashboard.yaml
