@@ -1,0 +1,32 @@
+# SafeR CI — Fire & Smoke Detection Alert
+alias: "SafeR - Fire/Smoke Alert"
+description: "Triggered when smoke or fire sensor activates"
+mode: single
+
+trigger:
+  - platform: state
+    entity_id: group.smoke_sensors
+    to: "on"
+    id: smoke_detected
+
+action:
+  - service: notify.sms_alert
+    data:
+      message: >
+        🔥 ALERTE INCENDIE - SAFER CI 🔥
+        Fumée/Feu détecté!
+        Lieu: {{ state_attr('device_tracker.hub_location', 'friendly_name') | default('Hub SafeR') }}
+        Heure: {{ now().strftime('%H:%M - %d/%m/%Y') }}
+        APPELEZ LE 180 (Pompiers)
+      target:
+        - !secret emergency_contact_1
+        - !secret emergency_contact_2
+    continue_on_error: true
+  - service: rest_command.safer_create_incident
+    data:
+      incident_type: "fire"
+      severity: "critical"
+      location_lat: "{{ state_attr('device_tracker.hub_location', 'latitude') | default(5.3600) }}"
+      location_lon: "{{ state_attr('device_tracker.hub_location', 'longitude') | default(-4.0083) }}"
+      hub_id: !secret hub_id
+    continue_on_error: true
