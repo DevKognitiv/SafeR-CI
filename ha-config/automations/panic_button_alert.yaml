@@ -1,0 +1,85 @@
+# SafeR CI — Panic Button Emergency Alert Automation
+# Triggers on any registered panic button press
+# Sends SMS via Twilio + webhook to SafeR API + local siren
+
+alias: "SafeR - Panic Button Alert"
+description: "Triggered when a panic button is pressed. Sends SMS, WhatsApp, and API alert."
+mode: queued
+max: 10
+
+trigger:
+  # Zigbee/Z-Wave panic button (binary sensor)
+  - platform: state
+    entity_id: group.panic_buttons
+    to: "on"
+    id: panic_button
+  # MQTT panic trigger (for custom hardware)
+  - platform: mqtt
+    topic: "safer/panic/+"
+    id: mqtt_panic
+
+condition:
+  # Debounce — avoid duplicate alerts within 30 seconds
+  - condition: template
+    value_template: >
+      {{ (now() - states.input_datetime.last_panic_alert.last_changed).total_seconds() > 30 }}
+
+action:
+  # 1. Record the alert timestamp
+  - service: input_datetime.set_datetime
+    target:
+      entity_id: input_datetime.last_panic_alert
+    data:
+      datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # 2. Activate local siren/alarm
+  - service: switch.turn_on
+    target:
+      entity_id: switch.safer_siren
+    continue_on_error: true
+
+  # 3. Send SMS via Twilio to emergency contacts
+  - service: notify.sms_alert
+    data:
+      message: >
+        🚨 ALERTE SAFER CI 🚨
+        Bouton panique activé!
+        Lieu: {{ state_attr('device_tracker.hub_location', 'friendly_name') | default('Hub SafeR') }}
+        Heure: {{ now().strftime('%H:%M - %d/%m/%Y') }}
+        Coordonnées: {{ state_attr('device_tracker.hub_location', 'latitude') }}, {{ state_attr('device_tracker.hub_location', 'longitude') }}
+      target:
+        - !secret emergency_contact_1
+        - !secret emergency_contact_2
+    continue_on_error: true
+
+  # 4. Send webhook to SafeR API backend
+  - service: rest_command.safer_create_incident
+    data:
+      incident_type: "panic"
+      severity: "critical"
+      location_lat: "{{ state_attr('device_tracker.hub_location', 'latitude') | default(5.3600) }}"
+      location_lon: "{{ state_attr('device_tracker.hub_location', 'longitude') | default(-4.0083) }}"
+      hub_id: !secret hub_id
+      triggered_by: >
+        {% if trigger.id == 'mqtt_panic' %}
+          {{ trigger.topic.split('/')[-1] }}
+        {% else %}
+          {{ trigger.entity_id }}
+        {% endif %}
+    continue_on_error: true
+
+  # 5. Push notification via SafeR mobile app
+  - service: notify.safer_api
+    data:
+      title: "🚨 ALERTE PANIQUE"
+      message: >
+        Alerte détectée à {{ state_attr('device_tracker.hub_location', 'friendly_name') | default('votre zone') }}.
+        Heure: {{ now().strftime('%H:%M') }}
+    continue_on_error: true
+
+  # 6. Persistent notification in HA dashboard
+  - service: persistent_notification.create
+    data:
+      title: "🚨 Panic Button Alert"
+      message: "Alert triggered at {{ now().strftime('%H:%M:%S') }}"
+      notification_id: "panic_alert_{{ now().timestamp() | int }}"
