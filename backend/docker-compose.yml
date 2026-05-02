@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: safer_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://safer:safer_pass@db:5432/safer_ci
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./app:/app/app
+
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: safer_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: safer
+      POSTGRES_PASSWORD: safer_pass
+      POSTGRES_DB: safer_ci
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safer -d safer_ci"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: safer_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: safer_celery
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  nginx:
+    image: nginx:alpine
+    container_name: safer_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../infrastructure/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
