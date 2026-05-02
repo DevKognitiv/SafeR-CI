@@ -1,0 +1,30 @@
+# SafeR CI — Flood Detection Alert
+alias: "SafeR - Flood Alert"
+description: "Triggered when flood/water sensor activates"
+mode: single
+
+trigger:
+  - platform: state
+    entity_id: group.flood_sensors
+    to: "on"
+
+action:
+  - service: notify.sms_alert
+    data:
+      message: >
+        💧 ALERTE INONDATION - SAFER CI 💧
+        Capteur d'eau déclenché!
+        Lieu: {{ state_attr('device_tracker.hub_location', 'friendly_name') | default('Hub SafeR') }}
+        Heure: {{ now().strftime('%H:%M - %d/%m/%Y') }}
+      target:
+        - !secret emergency_contact_1
+        - !secret emergency_contact_2
+    continue_on_error: true
+  - service: rest_command.safer_create_incident
+    data:
+      incident_type: "flood"
+      severity: "high"
+      location_lat: "{{ state_attr('device_tracker.hub_location', 'latitude') | default(5.3600) }}"
+      location_lon: "{{ state_attr('device_tracker.hub_location', 'longitude') | default(-4.0083) }}"
+      hub_id: !secret hub_id
+    continue_on_error: true
