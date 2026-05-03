@@ -1,0 +1,303 @@
+# SafeR CI — Automations de Contrôle de l'Application Mobile
+# Ces automations connectent Home Assistant à l'app mobile SafeR
+# Elles répondent aux événements capteurs ET aux commandes de l'app mobile
+
+# ==============================================================
+# AUTOMATION 1: SOS Depuis l'Application Mobile
+# Triggered: L'utilisateur appuie sur le bouton SOS dans l'app
+# ==============================================================
+- id: safer_sos_mobile_trigger
+  alias: "[SafeR] SOS depuis App Mobile"
+  description: "Traite les alertes SOS envoyées depuis l'app Flutter/Web"
+  trigger:
+    # Via webhook HTTP (FastAPI → HA)
+    - platform: webhook
+      webhook_id: !secret safer_webhook_sos
+      allowed_methods: [POST]
+      local_only: false
+    # Via MQTT (app mobile publie directement)
+    - platform: mqtt
+      topic: safer/mobile/sos
+      payload: ALERT
+    # Via input_button du tableau de bord HA
+    - platform: state
+      entity_id: input_button.safer_sos_trigger
+  condition:
+    - condition: state
+      entity_id: input_boolean.maintenance_mode
+      state: "off"
+  action:
+    # 1. Enregistrer l'heure de déclenchement
+    - service: system_log.write
+      data:
+        message: "SOS SafeR déclenché - Source: {{ trigger.platform }}"
+        level: warning
+
+    # 2. Envoyer alerte push à TOUS les appareils mobiles
+    - service: notify.notify
+      data:
+        title: "🆘 ALERTE SOS SAFER"
+        message: >
+          Demande de secours urgente!
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M') }}
+        data:
+          priority: high
+          ttl: 0
+          channel: sos_channel
+          importance: high
+          color: "#FF1744"
+          sticky: true
+          actions:
+            - action: RESPOND_YES
+              title: "Je réponds"
+            - action: RESPOND_NO
+              title: "Passer au suivant"
+
+    # 3. Poster l'incident au backend FastAPI
+    - service: rest_command.safer_post_incident
+      data:
+        type: "PANIQUE"
+        severity: "CRITICAL"
+        latitude: "{{ trigger.json.lat | default(5.3454) }}"
+        longitude: "{{ trigger.json.lng | default(-4.0244) }}"
+        description: "SOS mobile - {{ trigger.platform }}"
+        zone: "{{ states('input_select.active_zone') }}"
+        source: "mobile_app"
+
+    # 4. SMS de secours
+    - service: notify.twilio_sms
+      data:
+        message: >
+          🆘 SOS SafeR CI
+          Zone: {{ states('input_select.active_zone') }}
+          {{ now().strftime('%H:%M %d/%m/%Y') }}
+          Coordonnées: {{ trigger.json.lat | default('N/A') }},{{ trigger.json.lng | default('N/A') }}
+        target:
+          - !secret emergency_contact_1
+
+    # 5. Activer mode haute alerte
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.high_alert_mode
+
+# ==============================================================
+# AUTOMATION 2: Dispatch Secouriste depuis App Mobile
+# Triggered: L'application demande un secouriste
+# ==============================================================
+- id: safer_responder_dispatch
+  alias: "[SafeR] Dispatch Secouriste"
+  description: "Assigne un secouriste disponible à un incident"
+  trigger:
+    - platform: webhook
+      webhook_id: !secret safer_webhook_dispatch
+      allowed_methods: [POST]
+    - platform: mqtt
+      topic: safer/dispatch/request
+  condition:
+    - condition: template
+      value_template: "{{ states('sensor.responders_available') | int > 0 }}"
+  action:
+    # Notifier les secouristes disponibles
+    - service: notify.notify
+      data:
+        title: "🚓 Nouvelle Intervention"
+        message: >
+          Incident {{ trigger.json.type | default('URGENT') }}
+          Zone: {{ trigger.json.zone | default(states('input_select.active_zone')) }}
+          Priorité: {{ trigger.json.severity | default('HIGH') }}
+        data:
+          actions:
+            - action: ACCEPT_DISPATCH
+              title: "J'accepte"
+            - action: DECLINE_DISPATCH
+              title: "Décliner"
+          channel: dispatch_channel
+
+    # Mettre à jour le statut sur le tableau de bord
+    - service: rest_command.safer_update_incident
+      data:
+        status: "dispatched"
+        incident_id: "{{ trigger.json.incident_id | default('unknown') }}"
+
+# ==============================================================
+# AUTOMATION 3: Mise à jour Temps Réel vers l'App Mobile
+# Triggered: Un capteur change d'état
+# ==============================================================
+- id: safer_realtime_update_to_app
+  alias: "[SafeR] Mise à Jour Temps Réel → App"
+  description: "Envoie les changements d'état des capteurs à l'app mobile"
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.panic_button_zone_cocody
+        - binary_sensor.panic_button_zone_yopougon
+        - binary_sensor.panic_button_zone_marcory
+        - binary_sensor.panic_button_zone_abobo
+        - binary_sensor.panic_button_zone_bouake
+        - binary_sensor.fire_smoke_sensor
+        - binary_sensor.flood_sensor
+        - binary_sensor.intrusion_sensor
+      to: "on"
+  action:
+    # Publier sur MQTT pour que l'app Flutter récupère en temps réel
+    - service: mqtt.publish
+      data:
+        topic: "safer/app/updates"
+        payload: >-
+          {
+            "entity": "{{ trigger.entity_id }}",
+            "state": "{{ trigger.to_state.state }}",
+            "timestamp": "{{ now().isoformat() }}",
+            "zone": "{{ state_attr(trigger.entity_id, 'zone') | default('unknown') }}"
+          }
+        qos: 1
+        retain: false
+
+    # Envoyer webhook au backend Next.js / FastAPI
+    - service: rest_command.safer_sensor_update
+      data:
+        entity_id: "{{ trigger.entity_id }}"
+        new_state: "{{ trigger.to_state.state }}"
+        timestamp: "{{ now().isoformat() }}"
+
+# ==============================================================
+# AUTOMATION 4: Notification WhatsApp via Twilio
+# ==============================================================
+- id: safer_whatsapp_notification
+  alias: "[SafeR] Notification WhatsApp"
+  description: "Envoie des alertes WhatsApp aux contacts d'urgence"
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.fire_smoke_sensor
+        - binary_sensor.flood_sensor
+        - binary_sensor.panic_button_zone_cocody
+      to: "on"
+  condition:
+    - condition: state
+      entity_id: input_boolean.whatsapp_notifications
+      state: "on"
+  action:
+    - service: rest_command.safer_whatsapp_alert
+      data:
+        message: >
+          *🚨 ALERTE SafeR CI*
+          Capteur: {{ trigger.entity_id | replace('binary_sensor.', '') }}
+          État: {{ trigger.to_state.state }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+          Zone: {{ states('input_select.active_zone') }}
+        to: !secret whatsapp_group_id
+
+# ==============================================================
+# AUTOMATION 5: SMS Fallback 2G
+# Triggered quand Internet est indisponible
+# ==============================================================
+- id: safer_sms_fallback
+  alias: "[SafeR] SMS Fallback (sans Internet)"
+  description: "Utilise SMS quand la connexion Internet est perdue"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.internet_connectivity
+      to: "off"
+      for:
+        minutes: 2
+  action:
+    - service: notify.twilio_sms
+      data:
+        message: >
+          ⚠️ SafeR CI: Perte de connexion Internet détectée
+          Système bascule en mode SMS
+          {{ now().strftime('%H:%M %d/%m/%Y') }}
+        target:
+          - !secret safer_admin_phone
+
+    # Activer mode offline de l'app
+    - service: mqtt.publish
+      data:
+        topic: safer/system/mode
+        payload: OFFLINE_MODE
+        qos: 2
+        retain: true
+
+# ==============================================================
+# AUTOMATION 6: Rapport Journalier Automatique
+# ==============================================================
+- id: safer_daily_report
+  alias: "[SafeR] Rapport Journalier 18h"
+  description: "Envoie automatiquement le rapport quotidien à 18h"
+  trigger:
+    - platform: time
+      at: "18:00:00"
+  action:
+    - service: script.safer_daily_report
+
+# ==============================================================
+# AUTOMATION 7: Alerte Mode Nuit
+# ==============================================================
+- id: safer_night_mode_auto
+  alias: "[SafeR] Mode Nuit Automatique"
+  description: "Active le mode nuit à 22h, désactive à 6h"
+  trigger:
+    - platform: time
+      at: "22:00:00"
+    - platform: time
+      at: "06:00:00"
+  action:
+    - service: input_boolean.toggle
+      target:
+        entity_id: input_boolean.night_mode
+
+    - service: mqtt.publish
+      data:
+        topic: safer/app/night_mode
+        payload: "{{ 'ON' if now().hour >= 22 or now().hour < 6 else 'OFF' }}"
+        retain: true
+
+# ==============================================================
+# AUTOMATION 8: Réponse à l'Action Mobile (Accept/Decline)
+# ==============================================================
+- id: safer_handle_mobile_action
+  alias: "[SafeR] Traitement Actions Mobile"
+  description: "Traite les réponses des secouristes depuis l'app"
+  trigger:
+    - platform: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: RESPOND_YES
+    - platform: event
+      event_type: mobile_app_notification_action
+      event_data:
+        action: ACCEPT_DISPATCH
+  action:
+    - service: rest_command.safer_update_incident
+      data:
+        status: "responding"
+        responder: "{{ trigger.event.data.device_id | default('unknown') }}"
+
+    - service: notify.mobile_app_safer
+      data:
+        title: "✅ Intervention Acceptée"
+        message: "Votre réponse a été enregistrée. Bonne intervention!"
+
+# ==============================================================
+# AUTOMATION 9: Fin d'Alerte depuis App Mobile
+# ==============================================================
+- id: safer_mobile_all_clear
+  alias: "[SafeR] Fin d'Alerte depuis Mobile"
+  description: "L'app mobile signale la fin d'une alerte"
+  trigger:
+    - platform: webhook
+      webhook_id: !secret safer_webhook_resolve
+      allowed_methods: [POST]
+    - platform: mqtt
+      topic: safer/mobile/all_clear
+      payload: CLEAR
+  action:
+    - service: script.safer_all_clear
+
+    - service: mqtt.publish
+      data:
+        topic: safer/app/status
+        payload: "ALL_CLEAR"
+        retain: true
