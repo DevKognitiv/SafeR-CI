@@ -1,0 +1,216 @@
+# SafeR CI — Scripts d'Urgence Home Assistant
+# Ces scripts connectent Home Assistant à l'application mobile SafeR
+# Ils s'exécutent lors des automations ou via le tableau de bord
+
+safer_trigger_sos:
+  alias: "🆘 Déclencher SOS SafeR"
+  description: "Envoie une alerte SOS complète via tous les canaux"
+  sequence:
+    # Étape 1: Notifier l'API Backend
+    - service: rest_command.safer_post_incident
+      data:
+        type: "PANIQUE"
+        severity: "CRITICAL"
+        zone: "{{ states('input_select.active_zone') }}"
+        source: "home_assistant"
+
+    # Étape 2: Notification mobile via HA Companion App
+    - service: notify.mobile_app_safer
+      data:
+        title: "🆘 ALERTE SOS"
+        message: "Demande de secours! Intervention immédiate requise."
+        data:
+          notification_icon: mdi:phone-alert
+          color: "#FF1744"
+          importance: high
+          channel: sos_channel
+          actions:
+            - action: RESPOND
+              title: "Je réponds"
+            - action: DISMISS
+              title: "Ignorer"
+
+    # Étape 3: SMS via Twilio
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          🆘 ALERTE SOS SafeR CI
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+          Appeler 170 (Police) ou 185 (SAMU)
+        target:
+          - !secret emergency_contact_1
+          - !secret emergency_contact_2
+
+    # Étape 4: Activer le mode haute alerte
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.high_alert_mode
+
+    # Étape 5: Allumer les lumières d'urgence (rouge)
+    - service: light.turn_on
+      target:
+        entity_id: light.emergency_lights
+      data:
+        color_name: red
+        brightness: 255
+        flash: long
+
+safer_notify_police:
+  alias: "👮 Notifier Police (170)"
+  description: "Envoie une alerte à la Police Nationale"
+  sequence:
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          ALERTE SafeR CI - Intervention Police requise
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+          Contact: !secret safer_admin_phone
+        target:
+          - !secret police_dispatch_number
+
+    - service: rest_command.safer_dispatch_responder
+      data:
+        type: "POLICE"
+        zone: "{{ states('input_select.active_zone') }}"
+
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.police_alert_active
+
+    - service: notify.mobile_app_safer
+      data:
+        title: "✅ Police Notifiée"
+        message: "Police nationale contactée pour la zone {{ states('input_select.active_zone') }}"
+
+safer_notify_pompiers:
+  alias: "🚒 Notifier Pompiers (180)"
+  description: "Envoie une alerte aux Sapeurs-Pompiers"
+  sequence:
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          ALERTE INCENDIE SafeR CI - Intervention Pompiers requise
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+        target:
+          - !secret pompiers_dispatch_number
+
+    - service: rest_command.safer_dispatch_responder
+      data:
+        type: "POMPIERS"
+        zone: "{{ states('input_select.active_zone') }}"
+
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.fire_alert_active
+
+safer_notify_samu:
+  alias: "🚑 Notifier SAMU (185)"
+  description: "Envoie une alerte au SAMU"
+  sequence:
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          URGENCE MEDICALE SafeR CI - Intervention SAMU requise
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+        target:
+          - !secret samu_dispatch_number
+
+    - service: rest_command.safer_dispatch_responder
+      data:
+        type: "SAMU"
+        zone: "{{ states('input_select.active_zone') }}"
+
+safer_notify_gendarmerie:
+  alias: "🛡️ Notifier Gendarmerie (111)"
+  description: "Envoie une alerte à la Gendarmerie Nationale"
+  sequence:
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          ALERTE SafeR CI - Intervention Gendarmerie requise
+          Zone: {{ states('input_select.active_zone') }}
+          Heure: {{ now().strftime('%H:%M %d/%m/%Y') }}
+        target:
+          - !secret gendarmerie_dispatch_number
+
+    - service: rest_command.safer_dispatch_responder
+      data:
+        type: "GENDARMERIE"
+        zone: "{{ states('input_select.active_zone') }}"
+
+safer_broadcast_alert:
+  alias: "📢 Diffusion Alerte Générale"
+  description: "Alerte tous les secouristes et contacts d'urgence"
+  sequence:
+    - service: script.safer_notify_police
+    - delay: "00:00:02"
+    - service: script.safer_notify_pompiers
+    - delay: "00:00:02"
+    - service: script.safer_notify_samu
+    - delay: "00:00:02"
+    - service: script.safer_notify_gendarmerie
+
+    - service: rest_command.safer_broadcast_all
+      data:
+        message: "ALERTE GENERALE SafeR CI"
+        zone: "all"
+
+safer_all_clear:
+  alias: "✅ Fin d'Alerte SafeR"
+  description: "Annule toutes les alertes actives"
+  sequence:
+    - service: input_boolean.turn_off
+      target:
+        entity_id:
+          - input_boolean.police_alert_active
+          - input_boolean.fire_alert_active
+          - input_boolean.flood_alert_active
+          - input_boolean.intrusion_alert_active
+          - input_boolean.high_alert_mode
+
+    - service: rest_command.safer_resolve_incident
+      data:
+        status: "resolved"
+        resolved_by: "home_assistant"
+
+    - service: notify.mobile_app_safer
+      data:
+        title: "✅ Fin d'Alerte"
+        message: "Toutes les alertes SafeR ont été levées."
+        data:
+          color: "#4CAF50"
+
+    - service: light.turn_off
+      target:
+        entity_id: light.emergency_lights
+
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.safer_operation_mode
+      data:
+        option: "Normal"
+
+safer_daily_report:
+  alias: "📊 Rapport Journalier SafeR"
+  description: "Génère et envoie le rapport journalier"
+  sequence:
+    - service: rest_command.safer_generate_report
+      data:
+        date: "{{ now().strftime('%Y-%m-%d') }}"
+        type: "daily"
+
+    - service: notify.twilio_sms
+      data:
+        message: >-
+          📊 RAPPORT SafeR CI - {{ now().strftime('%d/%m/%Y') }}
+          Incidents actifs: {{ states('sensor.safer_active_incidents') }}
+          Résolus aujourd'hui: {{ states('sensor.safer_resolved_today') }}
+          Temps réponse moyen: {{ states('sensor.safer_response_time_avg') }} min
+          Secouristes en service: {{ states('sensor.responders_on_duty') }}
+          Système: {{ states('sensor.safer_system_status') }}
+        target:
+          - !secret safer_admin_phone
