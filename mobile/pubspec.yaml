@@ -33,6 +33,9 @@ dependencies:
   hive_flutter: ^1.1.0
   shared_preferences: ^2.2.3
 
+  # MQTT (Home Assistant integration)
+  mqtt_client: ^10.0.0
+
   # Notifications
   firebase_core: ^2.27.0
   firebase_messaging: ^14.7.19
