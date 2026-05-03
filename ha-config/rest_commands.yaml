@@ -1,0 +1,208 @@
+# SafeR CI — Commandes REST Home Assistant
+# Ces commandes HTTP permettent à HA d'appeler l'API SafeR (FastAPI + Next.js)
+# Inclure dans configuration.yaml: rest_command: !include rest_commands.yaml
+
+# =================================================================
+# INCIDENTS API
+# =================================================================
+
+# Créer un nouvel incident
+safer_post_incident:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/incidents"
+  method: POST
+  headers:
+    Content-Type: application/json
+    X-SafeR-Source: "home_assistant"
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "type": "{{ type }}",
+      "severity": "{{ severity | default('HIGH') }}",
+      "latitude": {{ latitude | default(5.3454) }},
+      "longitude": {{ longitude | default(-4.0244) }},
+      "description": "{{ description | default('') }}",
+      "zone": "{{ zone | default('unknown') }}",
+      "source": "{{ source | default('home_assistant') }}",
+      "timestamp": "{{ now().isoformat() }}"
+    }
+  content_type: "application/json"
+
+# Mettre à jour un incident existant
+safer_update_incident:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/incidents/{{ incident_id | default(states('input_text.current_incident_id')) }}"
+  method: PATCH
+  headers:
+    Content-Type: application/json
+    X-SafeR-Source: "home_assistant"
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "status": "{{ status }}",
+      "responder": "{{ responder | default('') }}",
+      "resolved_at": "{{ now().isoformat() if status == 'resolved' else '' }}",
+      "notes": "{{ notes | default('') }}"
+    }
+  content_type: "application/json"
+
+# Résoudre un incident
+safer_resolve_incident:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/incidents/{{ states('input_text.current_incident_id') }}/resolve"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "status": "{{ status | default('resolved') }}",
+      "resolved_by": "{{ resolved_by | default('home_assistant') }}",
+      "resolution_time": "{{ now().isoformat() }}"
+    }
+  content_type: "application/json"
+
+# =================================================================
+# RESPONDERS API
+# =================================================================
+
+# Dispatcher un secouriste
+safer_dispatch_responder:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/responders/dispatch"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "type": "{{ type }}",
+      "zone": "{{ zone }}",
+      "incident_id": "{{ incident_id | default('') }}",
+      "priority": "{{ priority | default('HIGH') }}",
+      "timestamp": "{{ now().isoformat() }}"
+    }
+  content_type: "application/json"
+
+# =================================================================
+# NOTIFICATIONS API (Next.js + Mobile)
+# =================================================================
+
+# Envoyer notification push à tous les utilisateurs
+safer_push_notification:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/notifications/push"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "title": "{{ title }}",
+      "body": "{{ message }}",
+      "data": {
+        "type": "{{ type | default('ALERT') }}",
+        "zone": "{{ zone | default('') }}",
+        "priority": "{{ priority | default('high') }}"
+      },
+      "topic": "{{ topic | default('all') }}"
+    }
+  content_type: "application/json"
+
+# Envoyer alerte WhatsApp via Twilio API
+safer_whatsapp_alert:
+  url: "https://api.twilio.com/2010-04-01/Accounts/!secret twilio_account_sid/Messages.json"
+  method: POST
+  username: "!secret twilio_account_sid"
+  password: "!secret twilio_auth_token"
+  payload: "From=whatsapp:!secret twilio_from_number&To=whatsapp:{{ to }}&Body={{ message | urlencode }}"
+  content_type: "application/x-www-form-urlencoded"
+
+# Diffusion à toutes les zones
+safer_broadcast_all:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/broadcast"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "message": "{{ message }}",
+      "zone": "{{ zone | default('all') }}",
+      "channels": ["push", "sms", "mqtt"],
+      "priority": "CRITICAL",
+      "timestamp": "{{ now().isoformat() }}"
+    }
+  content_type: "application/json"
+
+# =================================================================
+# SYSTEM API
+# =================================================================
+
+# Mise à jour capteur depuis HA vers app
+safer_sensor_update:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/sensors/update"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "entity_id": "{{ entity_id }}",
+      "state": "{{ new_state }}",
+      "timestamp": "{{ timestamp }}",
+      "attributes": {}
+    }
+  content_type: "application/json"
+
+# Générer rapport
+safer_generate_report:
+  url: "{{ states('input_text.safer_api_base_url') }}/api/v1/reports/generate"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Authorization: "Bearer !secret safer_api_key"
+  payload: >-
+    {
+      "date": "{{ date }}",
+      "type": "{{ type | default('daily') }}",
+      "format": "json"
+    }
+  content_type: "application/json"
+
+# =================================================================
+# NEXT.JS WEBHOOK (Dashboard Web Vercel)
+# =================================================================
+
+# Notifier le tableau de bord Vercel
+safer_notify_dashboard:
+  url: "https://safe-r-ci.vercel.app/api/incidents/webhook/ha"
+  method: POST
+  headers:
+    Content-Type: application/json
+    X-HA-Webhook-Secret: "!secret ha_webhook_secret"
+  payload: >-
+    {
+      "event": "{{ event_type }}",
+      "data": {
+        "entity_id": "{{ entity_id | default('') }}",
+        "state": "{{ state | default('') }}",
+        "zone": "{{ zone | default(states('input_select.active_zone')) }}",
+        "timestamp": "{{ now().isoformat() }}"
+      }
+    }
+  content_type: "application/json"
+
+# Créer incident directement sur le dashboard Vercel
+safer_create_incident_vercel:
+  url: "https://safe-r-ci.vercel.app/api/incidents"
+  method: POST
+  headers:
+    Content-Type: application/json
+  payload: >-
+    {
+      "type": "{{ type }}",
+      "severity": "{{ severity | default('HIGH') }}",
+      "lat": {{ lat | default(5.3454) }},
+      "lng": {{ lng | default(-4.0244) }},
+      "address": "{{ address | default('') }}",
+      "description": "{{ description | default('') }}",
+      "zone": "{{ zone | default('') }}",
+      "reportedBy": "home_assistant"
+    }
+  content_type: "application/json"
