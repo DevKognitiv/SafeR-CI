@@ -1,0 +1,610 @@
+# SafeR CI — Définitions des Entités Home Assistant
+# Ce fichier définit TOUTES les entités qui contrôlent l'application mobile SafeR
+# Inclure dans configuration.yaml : homeassistant: customize: !include entities/safer_entities.yaml
+
+# ============================================================
+# INPUT BOOLEANS (Interrupteurs logiques)
+# ============================================================
+input_boolean:
+  police_alert_active:
+    name: "Alerte Police Active"
+    icon: mdi:police-badge
+
+  fire_alert_active:
+    name: "Alerte Incendie Active"
+    icon: mdi:fire-alert
+
+  flood_alert_active:
+    name: "Alerte Inondation Active"
+    icon: mdi:water-alert
+
+  intrusion_alert_active:
+    name: "Alerte Intrusion Active"
+    icon: mdi:shield-alert
+
+  operations_mode:
+    name: "Mode Opérations"
+    icon: mdi:briefcase
+
+  night_mode:
+    name: "Mode Nuit"
+    icon: mdi:moon-waning-crescent
+
+  high_alert_mode:
+    name: "Mode Alerte Maximale"
+    icon: mdi:alert-octagon
+
+  maintenance_mode:
+    name: "Mode Maintenance"
+    icon: mdi:wrench
+
+  whatsapp_notifications:
+    name: "Notifications WhatsApp"
+    icon: mdi:whatsapp
+
+  sms_fallback:
+    name: "SMS Fallback (2G)"
+    icon: mdi:message-text
+
+  lorawan_enabled:
+    name: "LoRaWAN Activé"
+    icon: mdi:antenna
+
+# ============================================================
+# INPUT NUMBERS (Valeurs numériques configurables)
+# ============================================================
+input_number:
+  sos_response_timeout:
+    name: "Délai Réponse SOS (min)"
+    min: 1
+    max: 60
+    step: 1
+    initial: 5
+    icon: mdi:timer-cog
+    unit_of_measurement: min
+
+  alert_radius_km:
+    name: "Rayon d'Alerte (km)"
+    min: 0.5
+    max: 50
+    step: 0.5
+    initial: 5
+    icon: mdi:radius
+    unit_of_measurement: km
+
+  max_daily_alerts:
+    name: "Max Alertes Quotidiennes"
+    min: 1
+    max: 1000
+    step: 1
+    initial: 100
+    icon: mdi:counter
+
+  responder_dispatch_radius_km:
+    name: "Rayon Dispatch Secouristes (km)"
+    min: 1
+    max: 100
+    step: 1
+    initial: 10
+    icon: mdi:map-marker-radius
+    unit_of_measurement: km
+
+# ============================================================
+# INPUT SELECT (Sélecteurs)
+# ============================================================
+input_select:
+  safer_operation_mode:
+    name: "Mode d'Opération SafeR"
+    options:
+      - "Normal"
+      - "Alerte Modérée"
+      - "Alerte Élevée"
+      - "Urgence Maximale"
+      - "Maintenance"
+    initial: "Normal"
+    icon: mdi:tune
+
+  active_zone:
+    name: "Zone Active"
+    options:
+      - "Toutes les zones"
+      - "Cocody"
+      - "Yopougon"
+      - "Marcory"
+      - "Koumassi"
+      - "Abobo"
+      - "Bouaké"
+      - "San Pedro"
+      - "Yamoussoukro"
+    initial: "Toutes les zones"
+    icon: mdi:map
+
+  incident_type_filter:
+    name: "Filtre Type d'Incident"
+    options:
+      - "Tous"
+      - "Panique"
+      - "Incendie"
+      - "Inondation"
+      - "Intrusion"
+      - "Accident"
+      - "Médical"
+    initial: "Tous"
+    icon: mdi:filter
+
+# ============================================================
+# INPUT TEXT (Textes configurables)
+# ============================================================
+input_text:
+  safer_api_base_url:
+    name: "URL API Backend SafeR"
+    initial: "http://localhost:8000"
+    icon: mdi:api
+
+  twilio_from_number:
+    name: "Numéro Twilio Expéditeur"
+    initial: "+1XXXXXXXXXX"
+    icon: mdi:phone
+
+  whatsapp_group_id:
+    name: "ID Groupe WhatsApp"
+    initial: ""
+    icon: mdi:whatsapp
+
+  current_incident_id:
+    name: "ID Incident en cours"
+    initial: ""
+    icon: mdi:identifier
+    max: 100
+
+# ============================================================
+# INPUT BUTTON (Boutons d'action)
+# ============================================================
+input_button:
+  safer_sos_trigger:
+    name: "Déclencher SOS"
+    icon: mdi:phone-alert
+
+  safer_all_clear:
+    name: "Fin d'Alerte Générale"
+    icon: mdi:check-circle
+
+  safer_test_alert:
+    name: "Test Alerte (sans notification)"
+    icon: mdi:test-tube
+
+# ============================================================
+# TEMPLATE SENSORS (Capteurs calculés)
+# ============================================================
+template:
+  - sensor:
+      - name: "safer_active_incidents"
+        unique_id: safer_active_incidents
+        state: >
+          {{ states('input_number.max_daily_alerts') | int - 0 }}
+        icon: mdi:alert-circle
+        unit_of_measurement: "incidents"
+
+      - name: "safer_responders_online"
+        unique_id: safer_responders_online
+        state: >
+          {% set count = namespace(n=0) %}
+          {% if is_state('device_tracker.police_unit_1', 'home') %}{% set count.n = count.n + 1 %}{% endif %}
+          {% if is_state('device_tracker.police_unit_2', 'home') %}{% set count.n = count.n + 1 %}{% endif %}
+          {% if is_state('device_tracker.pompiers_unit_1', 'home') %}{% set count.n = count.n + 1 %}{% endif %}
+          {% if is_state('device_tracker.samu_ambulance_1', 'home') %}{% set count.n = count.n + 1 %}{% endif %}
+          {{ count.n }}
+        icon: mdi:account-hard-hat
+        unit_of_measurement: "secouristes"
+
+      - name: "safer_system_status"
+        unique_id: safer_system_status
+        state: >
+          {% if is_state('input_boolean.maintenance_mode', 'on') %}
+            Maintenance
+          {% elif is_state('input_boolean.high_alert_mode', 'on') %}
+            Alerte Maximale
+          {% elif is_state('input_boolean.operations_mode', 'on') %}
+            Opérationnel
+          {% else %}
+            Normal
+          {% endif %}
+        icon: mdi:shield-check
+
+      - name: "safer_resolved_today"
+        unique_id: safer_resolved_today
+        state: "0"
+        icon: mdi:check-circle-outline
+        unit_of_measurement: "résolus"
+
+      - name: "safer_response_time_avg"
+        unique_id: safer_response_time_avg
+        state: "8"
+        icon: mdi:timer-outline
+        unit_of_measurement: "min"
+
+      - name: "responders_on_duty"
+        unique_id: responders_on_duty
+        state: "6"
+        icon: mdi:account-check
+        unit_of_measurement: "agents"
+
+      - name: "responders_responding"
+        unique_id: responders_responding
+        state: >
+          {% if is_state('binary_sensor.panic_button_zone_cocody', 'on') or
+                is_state('binary_sensor.fire_smoke_sensor', 'on') or
+                is_state('binary_sensor.flood_sensor', 'on') %}
+            2
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:car-emergency
+        unit_of_measurement: "en route"
+
+      - name: "responders_available"
+        unique_id: responders_available
+        state: >
+          {{ 6 - (states('sensor.responders_responding') | int) }}
+        icon: mdi:account-multiple-check
+        unit_of_measurement: "disponibles"
+
+  - binary_sensor:
+      - name: "zone_cocody"
+        unique_id: zone_cocody
+        state: >
+          {{ is_state('binary_sensor.panic_button_zone_cocody', 'on') or
+             is_state('binary_sensor.fire_sensor_cocody', 'on') }}
+        icon: >
+          {% if is_state('binary_sensor.zone_cocody', 'on') %}
+            mdi:map-marker-alert
+          {% else %}
+            mdi:map-marker-check
+          {% endif %}
+        device_class: problem
+
+      - name: "zone_yopougon"
+        unique_id: zone_yopougon
+        state: >
+          {{ is_state('binary_sensor.panic_button_zone_yopougon', 'on') or
+             is_state('binary_sensor.flood_sensor_yopougon', 'on') }}
+        icon: mdi:map-marker
+        device_class: problem
+
+      - name: "zone_marcory"
+        unique_id: zone_marcory
+        state: >
+          {{ is_state('binary_sensor.panic_button_zone_marcory', 'on') or
+             is_state('binary_sensor.fire_sensor_marcory', 'on') }}
+        icon: mdi:map-marker
+        device_class: problem
+
+      - name: "zone_koumassi"
+        unique_id: zone_koumassi
+        state: "false"
+        icon: mdi:map-marker
+        device_class: problem
+
+      - name: "zone_abobo"
+        unique_id: zone_abobo
+        state: >
+          {{ is_state('binary_sensor.panic_button_zone_abobo', 'on') or
+             is_state('binary_sensor.flood_sensor_abobo', 'on') }}
+        icon: mdi:map-marker
+        device_class: problem
+
+      - name: "zone_bouake"
+        unique_id: zone_bouake
+        state: >
+          {{ is_state('binary_sensor.panic_button_zone_bouake', 'on') }}
+        icon: mdi:map-marker
+        device_class: problem
+
+      - name: "zone_san_pedro"
+        unique_id: zone_san_pedro
+        state: "false"
+        icon: mdi:map-marker
+        device_class: problem
+
+# ============================================================
+# BINARY SENSORS (via MQTT)
+# ============================================================
+mqtt:
+  binary_sensor:
+    # Boutons Panique par Zone
+    - name: "panic_button_zone_cocody"
+      unique_id: panic_cocody
+      state_topic: "safer/cocody/panic"
+      payload_on: "ALERT"
+      payload_off: "CLEAR"
+      device_class: problem
+      off_delay: 300
+
+    - name: "panic_button_zone_yopougon"
+      unique_id: panic_yopougon
+      state_topic: "safer/yopougon/panic"
+      payload_on: "ALERT"
+      payload_off: "CLEAR"
+      device_class: problem
+      off_delay: 300
+
+    - name: "panic_button_zone_marcory"
+      unique_id: panic_marcory
+      state_topic: "safer/marcory/panic"
+      payload_on: "ALERT"
+      payload_off: "CLEAR"
+      device_class: problem
+      off_delay: 300
+
+    - name: "panic_button_zone_abobo"
+      unique_id: panic_abobo
+      state_topic: "safer/abobo/panic"
+      payload_on: "ALERT"
+      payload_off: "CLEAR"
+      device_class: problem
+      off_delay: 300
+
+    - name: "panic_button_zone_bouake"
+      unique_id: panic_bouake
+      state_topic: "safer/bouake/panic"
+      payload_on: "ALERT"
+      payload_off: "CLEAR"
+      device_class: problem
+      off_delay: 300
+
+    # Capteurs Incendie
+    - name: "fire_smoke_sensor"
+      unique_id: fire_smoke_main
+      state_topic: "safer/sensors/fire_smoke"
+      payload_on: "FIRE"
+      payload_off: "CLEAR"
+      device_class: smoke
+      off_delay: 600
+
+    - name: "fire_sensor_cocody"
+      unique_id: fire_cocody
+      state_topic: "safer/cocody/fire"
+      payload_on: "FIRE"
+      payload_off: "CLEAR"
+      device_class: smoke
+
+    - name: "fire_sensor_yopougon"
+      unique_id: fire_yopougon
+      state_topic: "safer/yopougon/fire"
+      payload_on: "FIRE"
+      payload_off: "CLEAR"
+      device_class: smoke
+
+    - name: "fire_sensor_marcory"
+      unique_id: fire_marcory
+      state_topic: "safer/marcory/fire"
+      payload_on: "FIRE"
+      payload_off: "CLEAR"
+      device_class: smoke
+
+    # Capteurs Inondation
+    - name: "flood_sensor"
+      unique_id: flood_main
+      state_topic: "safer/sensors/flood"
+      payload_on: "FLOOD"
+      payload_off: "CLEAR"
+      device_class: moisture
+      off_delay: 600
+
+    - name: "flood_sensor_abobo"
+      unique_id: flood_abobo
+      state_topic: "safer/abobo/flood"
+      payload_on: "FLOOD"
+      payload_off: "CLEAR"
+      device_class: moisture
+
+    - name: "flood_sensor_yopougon"
+      unique_id: flood_yopougon
+      state_topic: "safer/yopougon/flood"
+      payload_on: "FLOOD"
+      payload_off: "CLEAR"
+      device_class: moisture
+
+    # Capteurs Intrusion
+    - name: "intrusion_sensor"
+      unique_id: intrusion_main
+      state_topic: "safer/sensors/intrusion"
+      payload_on: "INTRUSION"
+      payload_off: "CLEAR"
+      device_class: motion
+
+    - name: "door_sensor_main"
+      unique_id: door_main
+      state_topic: "safer/sensors/door"
+      payload_on: "OPEN"
+      payload_off: "CLOSED"
+      device_class: door
+
+    - name: "motion_sensor_perimeter"
+      unique_id: motion_perimeter
+      state_topic: "safer/sensors/motion"
+      payload_on: "DETECTED"
+      payload_off: "CLEAR"
+      device_class: motion
+
+    - name: "glass_break_sensor"
+      unique_id: glass_break
+      state_topic: "safer/sensors/glass_break"
+      payload_on: "BREAK"
+      payload_off: "CLEAR"
+      device_class: sound
+
+    # Capteurs Réseau
+    - name: "lorawan_gateway_1"
+      unique_id: lorawan_cocody
+      state_topic: "safer/lorawan/cocody/status"
+      payload_on: "ONLINE"
+      payload_off: "OFFLINE"
+      device_class: connectivity
+
+    - name: "lorawan_gateway_2"
+      unique_id: lorawan_yopougon
+      state_topic: "safer/lorawan/yopougon/status"
+      payload_on: "ONLINE"
+      payload_off: "OFFLINE"
+      device_class: connectivity
+
+    - name: "lorawan_gateway_3"
+      unique_id: lorawan_abobo
+      state_topic: "safer/lorawan/abobo/status"
+      payload_on: "ONLINE"
+      payload_off: "OFFLINE"
+      device_class: connectivity
+
+    - name: "command_center_active"
+      unique_id: command_center
+      state_topic: "safer/command/status"
+      payload_on: "ACTIVE"
+      payload_off: "INACTIVE"
+      device_class: running
+
+  sensor:
+    # Capteurs environnementaux
+    - name: "temperature_outdoor"
+      unique_id: temp_outdoor
+      state_topic: "safer/environment/temperature"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      value_template: "{{ value_json.temperature }}"
+
+    - name: "humidity_outdoor"
+      unique_id: humidity_outdoor
+      state_topic: "safer/environment/humidity"
+      unit_of_measurement: "%"
+      device_class: humidity
+      value_template: "{{ value_json.humidity }}"
+
+    - name: "smoke_level"
+      unique_id: smoke_level
+      state_topic: "safer/sensors/smoke_level"
+      unit_of_measurement: "ppm"
+      device_class: carbon_monoxide
+      value_template: "{{ value_json.level }}"
+
+    - name: "water_level"
+      unique_id: water_level
+      state_topic: "safer/sensors/water_level"
+      unit_of_measurement: "cm"
+      value_template: "{{ value_json.level }}"
+
+    - name: "rain_intensity"
+      unique_id: rain_intensity
+      state_topic: "safer/environment/rain"
+      unit_of_measurement: "mm/h"
+      device_class: precipitation_intensity
+      value_template: "{{ value_json.intensity }}"
+
+    - name: "air_quality"
+      unique_id: air_quality
+      state_topic: "safer/environment/air_quality"
+      unit_of_measurement: "AQI"
+      device_class: aqi
+      value_template: "{{ value_json.aqi }}"
+
+    - name: "illuminance_abidjan"
+      unique_id: illuminance_abidjan
+      state_topic: "safer/environment/illuminance"
+      unit_of_measurement: "lx"
+      device_class: illuminance
+      value_template: "{{ value_json.lux }}"
+
+    # Capteurs système
+    - name: "safer_network_uptime"
+      unique_id: network_uptime
+      state_topic: "safer/system/uptime"
+      unit_of_measurement: "%"
+      value_template: "{{ value_json.uptime }}"
+
+    - name: "safer_mqtt_messages_day"
+      unique_id: mqtt_messages
+      state_topic: "safer/system/mqtt_stats"
+      unit_of_measurement: "msgs"
+      value_template: "{{ value_json.messages_today }}"
+
+    - name: "safer_api_requests_day"
+      unique_id: api_requests
+      state_topic: "safer/system/api_stats"
+      unit_of_measurement: "req"
+      value_template: "{{ value_json.requests_today }}"
+
+    - name: "active_sensors_count"
+      unique_id: active_sensors
+      state_topic: "safer/system/sensors"
+      unit_of_measurement: "capteurs"
+      value_template: "{{ value_json.active }}"
+
+    - name: "offline_sensors_count"
+      unique_id: offline_sensors
+      state_topic: "safer/system/sensors"
+      unit_of_measurement: "capteurs"
+      value_template: "{{ value_json.offline }}"
+
+    - name: "safer_version"
+      unique_id: safer_version
+      state_topic: "safer/system/version"
+      value_template: "{{ value_json.version }}"
+
+    - name: "server_cpu_temp"
+      unique_id: server_cpu_temp
+      state_topic: "safer/system/server"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      value_template: "{{ value_json.cpu_temp }}"
+
+    - name: "server_disk_usage"
+      unique_id: server_disk
+      state_topic: "safer/system/server"
+      unit_of_measurement: "%"
+      value_template: "{{ value_json.disk_percent }}"
+
+    # GPS Secouristes — position
+    - name: "police_eta_min"
+      unique_id: police_eta
+      state_topic: "safer/responders/police/eta"
+      unit_of_measurement: "min"
+      value_template: "{{ value_json.eta_minutes }}"
+
+    - name: "nearest_fire_station"
+      unique_id: fire_station
+      state_topic: "safer/responders/pompiers/nearest"
+      value_template: "{{ value_json.station_name }}"
+
+    - name: "hospital_capacity_cocody"
+      unique_id: hospital_cocody
+      state_topic: "safer/hospitals/cocody"
+      unit_of_measurement: "%"
+      value_template: "{{ value_json.capacity_percent }}"
+
+    - name: "hospital_capacity_yopougon"
+      unique_id: hospital_yopougon
+      state_topic: "safer/hospitals/yopougon"
+      unit_of_measurement: "%"
+      value_template: "{{ value_json.capacity_percent }}"
+
+# ============================================================
+# DEVICE TRACKERS (GPS Secouristes)
+# ============================================================
+# Note: Utiliser l'intégration MQTT Device Tracker
+# Ces trackers reçoivent les positions GPS via MQTT
+
+# mqtt device_trackers sont configurés dans device_tracker.yaml
+# safer/trackers/police_1 → device_tracker.police_unit_1
+# safer/trackers/police_2 → device_tracker.police_unit_2
+# safer/trackers/pompiers_1 → device_tracker.pompiers_unit_1
+# safer/trackers/samu_1 → device_tracker.samu_ambulance_1
+
+# ============================================================
+# ALARM CONTROL PANEL
+# ============================================================
+alarm_control_panel:
+  - platform: manual
+    name: "safer_alarm"
+    arming_time: 30
+    delay_time: 20
+    trigger_time: 120
+    disarm_after_trigger: false
