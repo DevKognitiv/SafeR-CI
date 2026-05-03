@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safer-red: 220 38 38;
+    --safer-orange: 234 88 12;
+    --safer-blue: 37 99 235;
+  }
+  body {
+    @apply bg-slate-950 text-white;
+  }
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  background: #1e293b !important;
+}
+.leaflet-tile-pane { filter: brightness(0.8) saturate(0.7); }
