@@ -52,10 +52,13 @@ DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/DBNAME
 
 ### Option C — Docker (optional)
 
+`backend/docker-compose.yml` defines every service (api, db, redis,
+celery_worker, nginx). Run them all, or just the infra you want:
+
 ```bash
 cd backend
-docker-compose up -d db        # just the database
-# or `docker-compose up -d` to also run the API container
+docker-compose up -d db redis   # just the datastores
+# or `docker-compose up -d` for the full stack
 ```
 
 ## 3. Run the backend
@@ -73,7 +76,42 @@ Tables and the PostGIS extension are created automatically on startup
 curl localhost:8000/health/db     # {"status":"ok","database":"connected"}
 ```
 
-## 4. Deploy Home Assistant Node
+## 4. Background services (Redis + Celery)
+
+Redis is the broker/result backend for the Celery worker. The API itself
+does not require Redis to serve requests, so this is only needed when you
+run background tasks. Pick **one**, no Docker required:
+
+### Redis — native
+
+```bash
+# Debian/Ubuntu
+sudo apt install -y redis-server && sudo service redis-server start
+# macOS
+brew install redis && brew services start redis
+
+redis-cli ping                    # PONG   (or: make redis to run it foreground)
+```
+
+### Redis — hosted
+
+Use any managed Redis (Upstash, Redis Cloud, Elasticache) and set in
+`backend/.env`:
+
+```
+REDIS_URL=rediss://USER:PASSWORD@HOST:6379/0
+```
+
+### Celery worker (native)
+
+With Redis reachable via `REDIS_URL`:
+
+```bash
+cd backend
+make worker        # celery -A app.workers.celery_app worker --loglevel=info
+```
+
+## 5. Deploy Home Assistant Node
 
 On your Raspberry Pi 4:
 1. Flash Home Assistant OS: https://www.home-assistant.io/installation/raspberrypi
@@ -82,7 +120,7 @@ On your Raspberry Pi 4:
 4. Install required add-ons: Mosquitto, Node-RED, MariaDB
 5. Restart Home Assistant
 
-## 5. Build Flutter App
+## 6. Build Flutter App
 
 ```bash
 cd mobile
@@ -91,12 +129,16 @@ flutter build apk --release  # Android
 flutter build ios --release  # iOS
 ```
 
-## 6. Configure Nginx
+## 7. Configure Nginx (production)
+
+For local development the API is reached directly at `localhost:8000`, so
+Nginx is not required. For production, run native Nginx (no Docker):
 
 ```bash
-cp infrastructure/nginx/nginx.conf /etc/nginx/conf.d/safer-ci.conf
-certbot --nginx -d api.safer-ci.app
-nginx -s reload
+sudo apt install -y nginx                         # or: brew install nginx
+sudo cp infrastructure/nginx/nginx.conf /etc/nginx/conf.d/safer-ci.conf
+sudo certbot --nginx -d api.safer-ci.app
+sudo nginx -s reload
 ```
 
 ## Environment Variables
