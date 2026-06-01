@@ -2,12 +2,13 @@
 SafeR CI — Incident Model
 Represents a safety incident reported by a hub or citizen
 """
+import uuid
 from datetime import datetime
 from enum import Enum
+
 from sqlalchemy import Column, String, Float, DateTime, Boolean, Text, Index
 from sqlalchemy.dialects.postgresql import UUID
 from geoalchemy2 import Geography
-import uuid
 
 from app.core.database import Base
 

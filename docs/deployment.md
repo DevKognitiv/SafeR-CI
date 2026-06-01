@@ -2,11 +2,11 @@
 
 ## Prerequisites
 
-- Linux server (Ubuntu 22.04 LTS recommended)
-- Docker & Docker Compose v2
-- Domain name with DNS configured
-- Twilio account (SMS alerts)
-- Firebase project (push notifications)
+- Linux server (Ubuntu 22.04 LTS recommended) or macOS for local dev
+- PostgreSQL 15+ with the PostGIS extension (Docker is **optional** — see below)
+- Python 3.10+
+- Domain name with DNS configured (production)
+- Twilio account (SMS alerts) and Firebase project (push notifications)
 
 ## 1. Clone and Configure
 
@@ -18,14 +18,100 @@ cp .env.example .env
 nano .env
 ```
 
-## 2. Start Backend Services
+## 2. Provision the database
+
+The backend needs PostgreSQL **with PostGIS** (the `Incident` model uses a
+`geography` column and `ST_DWithin` radius search). Pick **one** of:
+
+### Option A — Native local Postgres (no Docker)
+
+Install and start Postgres + PostGIS once, then run the setup script:
 
 ```bash
-docker-compose up -d
-docker-compose exec api alembic upgrade head  # Run DB migrations
+# Debian/Ubuntu
+sudo apt install -y postgresql postgresql-16-postgis-3
+# macOS
+brew install postgresql postgis && brew services start postgresql
+
+# Create the role, database, and PostGIS extension (idempotent)
+cd backend
+make db            # or: ./scripts/setup_db.sh
 ```
 
-## 3. Deploy Home Assistant Node
+The script prints the `DATABASE_URL` to copy into `backend/.env`.
+
+### Option B — Hosted Postgres (no local install)
+
+Use any managed Postgres that supports PostGIS (Neon, Supabase, Railway, RDS).
+Create a database, enable PostGIS (`CREATE EXTENSION postgis;`), and set the
+connection string in `backend/.env`:
+
+```
+DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/DBNAME
+```
+
+### Option C — Docker (optional)
+
+`backend/docker-compose.yml` defines every service (api, db, redis,
+celery_worker, nginx). Run them all, or just the infra you want:
+
+```bash
+cd backend
+docker-compose up -d db redis   # just the datastores
+# or `docker-compose up -d` for the full stack
+```
+
+## 3. Run the backend
+
+```bash
+cd backend
+make install       # pip install -r requirements.txt
+make dev           # uvicorn app.main:app --reload
+```
+
+Tables and the PostGIS extension are created automatically on startup
+(`init_db`). Verify with:
+
+```bash
+curl localhost:8000/health/db     # {"status":"ok","database":"connected"}
+```
+
+## 4. Background services (Redis + Celery)
+
+Redis is the broker/result backend for the Celery worker. The API itself
+does not require Redis to serve requests, so this is only needed when you
+run background tasks. Pick **one**, no Docker required:
+
+### Redis — native
+
+```bash
+# Debian/Ubuntu
+sudo apt install -y redis-server && sudo service redis-server start
+# macOS
+brew install redis && brew services start redis
+
+redis-cli ping                    # PONG   (or: make redis to run it foreground)
+```
+
+### Redis — hosted
+
+Use any managed Redis (Upstash, Redis Cloud, Elasticache) and set in
+`backend/.env`:
+
+```
+REDIS_URL=rediss://USER:PASSWORD@HOST:6379/0
+```
+
+### Celery worker (native)
+
+With Redis reachable via `REDIS_URL`:
+
+```bash
+cd backend
+make worker        # celery -A app.workers.celery_app worker --loglevel=info
+```
+
+## 5. Deploy Home Assistant Node
 
 On your Raspberry Pi 4:
 1. Flash Home Assistant OS: https://www.home-assistant.io/installation/raspberrypi
@@ -34,7 +120,7 @@ On your Raspberry Pi 4:
 4. Install required add-ons: Mosquitto, Node-RED, MariaDB
 5. Restart Home Assistant
 
-## 4. Build Flutter App
+## 6. Build Flutter App
 
 ```bash
 cd mobile
@@ -43,12 +129,16 @@ flutter build apk --release  # Android
 flutter build ios --release  # iOS
 ```
 
-## 5. Configure Nginx
+## 7. Configure Nginx (production)
+
+For local development the API is reached directly at `localhost:8000`, so
+Nginx is not required. For production, run native Nginx (no Docker):
 
 ```bash
-cp infrastructure/nginx/nginx.conf /etc/nginx/conf.d/safer-ci.conf
-certbot --nginx -d api.safer-ci.app
-nginx -s reload
+sudo apt install -y nginx                         # or: brew install nginx
+sudo cp infrastructure/nginx/nginx.conf /etc/nginx/conf.d/safer-ci.conf
+sudo certbot --nginx -d api.safer-ci.app
+sudo nginx -s reload
 ```
 
 ## Environment Variables

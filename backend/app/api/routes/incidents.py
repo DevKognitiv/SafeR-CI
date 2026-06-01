@@ -43,7 +43,7 @@ async def get_incidents(
     lon: Optional[float] = Query(None, description="Center longitude"),
     radius_km: float = Query(5.0, description="Search radius in km"),
     incident_type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None, default="open"),
+    status: Optional[str] = Query("open"),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     db: AsyncSession = Depends(get_db),
