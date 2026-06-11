@@ -4,14 +4,20 @@ import 'package:flutter/material.dart';
 
 import '../services/ha_client.dart';
 import '../services/ha_connection_settings.dart';
+import '../widgets/entity_detail_sheet.dart';
+import '../widgets/ha_entity_visuals.dart';
 import 'ha_settings_sheet.dart';
 
 /// Live Home Assistant dashboard.
 ///
-/// Loads connection settings from [HaConnectionSettings], opens a HA
-/// WebSocket via [HaClient], and renders a status-chip + per-area
-/// dashboard against real HA entities. Tapping a tile toggles the
-/// underlying entity via `call_service`.
+/// Renders *every* visible entity HA exposes, grouped by area: known domains
+/// get dedicated tiles and controls, unknown domains fall back to a generic
+/// tile + attribute sheet, so any device from any protocol HA bridges
+/// (Matter, Zigbee, Z-Wave, Thread, WiFi, BLE, KNX, MQTT, …) shows up.
+///
+/// Tap = the domain's primary action (toggle, open/close, lock/unlock,
+/// play/pause, start/dock…). Long-press (or tap, for domains that need
+/// richer input like alarms and thermostats) opens [EntityDetailSheet].
 class HaDashboardScreen extends StatefulWidget {
   const HaDashboardScreen({super.key});
 
@@ -21,9 +27,10 @@ class HaDashboardScreen extends StatefulWidget {
 
 class _HaDashboardScreenState extends State<HaDashboardScreen> {
   HaClient? _client;
-  StreamSubscription<Map<String, HaState>>? _sub;
+  StreamSubscription<Map<String, HaState>>? _statesSub;
+  StreamSubscription<HaConnectionState>? _connSub;
   Map<String, HaState> _states = {};
-  Map<String, HaArea> _areas = {};
+  HaConnectionState _connection = HaConnectionState.disconnected;
   String? _connectionError;
   bool _connecting = false;
   HaConnectionSettings? _settings;
@@ -36,7 +43,8 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _statesSub?.cancel();
+    _connSub?.cancel();
     _client?.dispose();
     super.dispose();
   }
@@ -56,20 +64,31 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
       _connectionError = null;
       _settings = settings;
     });
-    final client = HaClient(wsUrl: settings.wsUrl, token: settings.token);
+    final client = HaClient(
+      wsUrl: settings.wsUrl,
+      restBase: settings.restBase,
+      token: settings.token,
+    );
+    _client = client;
+    _connSub = client.connectionStates.listen((s) {
+      if (!mounted) return;
+      setState(() => _connection = s);
+    });
+    _statesSub = client.states.listen((s) {
+      if (!mounted) return;
+      setState(() => _states = s);
+    });
     try {
       await client.connect();
-      _client = client;
-      _states = client.currentStates;
-      _areas = client.areas;
-      _sub = client.states.listen((s) {
-        if (!mounted) return;
-        setState(() => _states = s);
-      });
-      setState(() => _connecting = false);
-    } catch (e) {
-      await client.dispose();
       if (!mounted) return;
+      setState(() {
+        _states = client.currentStates;
+        _connecting = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      // autoReconnect keeps retrying in the background; surface the first
+      // error so the user can fix settings if it's an auth problem.
       setState(() {
         _connecting = false;
         _connectionError = '$e';
@@ -77,33 +96,66 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
     }
   }
 
+  Future<void> _teardownClient() async {
+    await _statesSub?.cancel();
+    await _connSub?.cancel();
+    _statesSub = null;
+    _connSub = null;
+    await _client?.dispose();
+    _client = null;
+  }
+
   Future<void> _openSettings() async {
     final result = await showModalBottomSheet<HaConnectionSettings>(
       context: context,
       isScrollControlled: true,
       builder: (_) => HaSettingsSheet(
-        initial: _settings ?? const HaConnectionSettings(baseUrl: '', token: ''),
+        initial:
+            _settings ?? const HaConnectionSettings(baseUrl: '', token: ''),
       ),
     );
     if (result == null) return;
-    await _sub?.cancel();
-    await _client?.dispose();
-    _client = null;
+    await _teardownClient();
     await _connect(result);
   }
+
+  /// Domains that need richer input than a tap (codes, temperatures,
+  /// option lists), so tapping the tile opens the detail sheet instead of
+  /// firing a service.
+  static const Set<String> _detailFirstDomains = {
+    'alarm_control_panel',
+    'climate',
+    'select',
+    'input_select',
+    'number',
+    'input_number',
+    'camera',
+    'water_heater',
+  };
 
   Future<void> _onTileTap(HaState entity) async {
     final client = _client;
     if (client == null) return;
-    if (!_isToggleable(entity.domain)) return;
+    final domain = entity.domain;
+    if (_detailFirstDomains.contains(domain) ||
+        !client.isPrimaryActionable(domain)) {
+      await EntityDetailSheet.show(context, client, entity.entityId);
+      return;
+    }
     try {
-      await client.toggle(entity.entityId);
+      await client.primaryAction(entity.entityId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Toggle failed: $e')),
+        SnackBar(content: Text('Command failed: $e')),
       );
     }
+  }
+
+  Future<void> _onTileLongPress(HaState entity) async {
+    final client = _client;
+    if (client == null) return;
+    await EntityDetailSheet.show(context, client, entity.entityId);
   }
 
   @override
@@ -120,7 +172,7 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
             const Text('Home Assistant',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
-            _ConnectionDot(connected: _client?.isConnected ?? false),
+            _ConnectionDot(state: _connection),
           ],
         ),
         actions: [
@@ -132,7 +184,13 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          if (_connection == HaConnectionState.reconnecting)
+            const _ReconnectingBanner(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
@@ -140,13 +198,16 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
     if (_settings == null || !_settings!.isComplete) {
       return _NoSettings(onOpen: _openSettings);
     }
-    if (_connecting) {
+    if (_connecting && _states.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_connectionError != null) {
+    if (_connectionError != null && _states.isEmpty) {
       return _ErrorState(
         error: _connectionError!,
-        onRetry: () => _connect(_settings!),
+        onRetry: () async {
+          await _teardownClient();
+          await _connect(_settings!);
+        },
         onSettings: _openSettings,
       );
     }
@@ -154,8 +215,9 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
       return const Center(child: Text('No entities available.'));
     }
 
+    final client = _client!;
     final chips = _statusChips(_states);
-    final byArea = _groupByArea(_states, _areas, _client!);
+    final byArea = _groupByArea(_states, client);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -167,7 +229,7 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
             area: entry.key,
             entities: entry.value,
             onTap: _onTileTap,
-            isToggleable: _isToggleable,
+            onLongPress: _onTileLongPress,
           ),
           const SizedBox(height: 16),
         ],
@@ -180,49 +242,39 @@ class _HaDashboardScreenState extends State<HaDashboardScreen> {
 // Grouping & filtering
 // ---------------------------------------------------------------------------
 
-/// Domains we surface on the dashboard. Keeps the noise down (HA exposes
-/// dozens of housekeeping entities like `sensor.last_boot` we don't want).
-const _renderableDomains = {
-  'light',
-  'switch',
-  'cover',
-  'climate',
-  'media_player',
-  'fan',
-  'lock',
-  'binary_sensor',
-  'sensor',
-  'vacuum',
+/// Housekeeping domains that never belong on a device dashboard. Everything
+/// else renders — including domains this app has no special handling for.
+const _excludedDomains = {
+  'persistent_notification',
+  'sun',
+  'zone',
+  'person', // surfaced in the chips row instead
+  'device_tracker',
+  'tts',
+  'stt',
+  'conversation',
+  'update',
+  'event',
+  'tag',
+  'todo',
+  'calendar',
 };
 
-const _toggleableDomains = {
-  'light',
-  'switch',
-  'fan',
-  'media_player',
-  'cover',
-  'lock',
-};
-
-bool _isToggleable(String domain) => _toggleableDomains.contains(domain);
-
-/// Returns area-name → entities, plus an "Other" bucket for entities with no
-/// area. Areas with zero renderable entities are skipped.
+/// area-name → entities; "Other" bucket last. Diagnostic/config/hidden/
+/// disabled entities are filtered through the entity registry.
 Map<String, List<HaState>> _groupByArea(
   Map<String, HaState> states,
-  Map<String, HaArea> areas,
   HaClient client,
 ) {
   final out = <String, List<HaState>>{};
   for (final s in states.values) {
-    if (!_renderableDomains.contains(s.domain)) continue;
-    if (s.domain == 'sensor' && _isNoisySensor(s)) continue;
+    if (_excludedDomains.contains(s.domain)) continue;
+    if (!client.isVisible(s.entityId)) continue;
     final areaId = client.areaForEntity(s.entityId);
-    final areaName = areaId != null ? areas[areaId]?.name : null;
+    final areaName = areaId != null ? client.areas[areaId]?.name : null;
     final bucket = areaName ?? 'Other';
     out.putIfAbsent(bucket, () => []).add(s);
   }
-  // Stable sort: real areas first (by name), "Other" last.
   final keys = out.keys.toList()
     ..sort((a, b) {
       if (a == 'Other') return 1;
@@ -233,20 +285,10 @@ Map<String, List<HaState>> _groupByArea(
 }
 
 int _entityCompare(HaState a, HaState b) {
-  // Toggleable first, then alphabetic.
-  final at = _toggleableDomains.contains(a.domain) ? 0 : 1;
-  final bt = _toggleableDomains.contains(b.domain) ? 0 : 1;
+  final at = HaClient.primaryActionDomains.contains(a.domain) ? 0 : 1;
+  final bt = HaClient.primaryActionDomains.contains(b.domain) ? 0 : 1;
   if (at != bt) return at - bt;
   return a.friendlyName.toLowerCase().compareTo(b.friendlyName.toLowerCase());
-}
-
-bool _isNoisySensor(HaState s) {
-  // Skip diagnostic / housekeeping sensors that flood the dashboard.
-  const skipUnits = {'°', null, ''};
-  if (s.attributes['device_class'] == null && skipUnits.contains(s.unit)) {
-    return true;
-  }
-  return false;
 }
 
 List<_ChipData> _statusChips(Map<String, HaState> states) {
@@ -260,7 +302,7 @@ List<_ChipData> _statusChips(Map<String, HaState> states) {
   }
 
   final temp = firstByDeviceClass('temperature', 'sensor');
-  if (temp != null) {
+  if (temp != null && !temp.isUnavailable) {
     chips.add(_ChipData(
       icon: Icons.thermostat,
       color: Colors.redAccent,
@@ -268,12 +310,22 @@ List<_ChipData> _statusChips(Map<String, HaState> states) {
     ));
   }
   final hum = firstByDeviceClass('humidity', 'sensor');
-  if (hum != null) {
+  if (hum != null && !hum.isUnavailable) {
     chips.add(_ChipData(
       icon: Icons.water_drop,
       color: Colors.blueAccent,
       label: '${hum.state}${hum.unit ?? ''}',
     ));
+  }
+  for (final s in states.values) {
+    if (s.domain == 'alarm_control_panel') {
+      chips.add(_ChipData(
+        icon: Icons.shield,
+        color: s.isOn ? Colors.red : Colors.green,
+        label: s.state.replaceAll('_', ' '),
+      ));
+      break;
+    }
   }
   for (final s in states.values) {
     if (s.domain == 'person') {
@@ -282,7 +334,7 @@ List<_ChipData> _statusChips(Map<String, HaState> states) {
         color: Colors.grey,
         label: '${s.friendlyName}: ${s.state}',
       ));
-      if (chips.length >= 4) break;
+      if (chips.length >= 6) break;
     }
   }
   return chips;
@@ -350,12 +402,12 @@ class _AreaSection extends StatelessWidget {
   final String area;
   final List<HaState> entities;
   final Future<void> Function(HaState) onTap;
-  final bool Function(String) isToggleable;
+  final Future<void> Function(HaState) onLongPress;
   const _AreaSection({
     required this.area,
     required this.entities,
     required this.onTap,
-    required this.isToggleable,
+    required this.onLongPress,
   });
 
   @override
@@ -392,7 +444,8 @@ class _AreaSection extends StatelessWidget {
             for (final e in entities)
               _EntityTile(
                 entity: e,
-                onTap: isToggleable(e.domain) ? () => onTap(e) : null,
+                onTap: () => onTap(e),
+                onLongPress: () => onLongPress(e),
               ),
           ],
         ),
@@ -403,60 +456,70 @@ class _AreaSection extends StatelessWidget {
 
 class _EntityTile extends StatelessWidget {
   final HaState entity;
-  final VoidCallback? onTap;
-  const _EntityTile({required this.entity, this.onTap});
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  const _EntityTile({
+    required this.entity,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final accent = _domainColor(entity.domain);
+    final accent = haDomainColor(entity.domain);
     final on = entity.isOn;
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
+    final unavailable = entity.isUnavailable;
+    return Opacity(
+      opacity: unavailable ? 0.45 : 1,
+      child: Material(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black12, blurRadius: 2, offset: Offset(0, 1)),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: on ? accent.withOpacity(0.18) : Colors.black12,
-                  shape: BoxShape.circle,
+        elevation: 0,
+        child: InkWell(
+          onTap: unavailable ? null : onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(
+                    color: Colors.black12, blurRadius: 2, offset: Offset(0, 1)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: on ? accent.withOpacity(0.18) : Colors.black12,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(haDomainIcon(entity.domain),
+                      size: 18, color: on ? accent : Colors.black45),
                 ),
-                child: Icon(_domainIcon(entity.domain),
-                    size: 18, color: on ? accent : Colors.black45),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(entity.friendlyName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(_stateLabel(entity),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.black54, fontSize: 12)),
-                  ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(entity.friendlyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(haStateLabel(entity),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.black54, fontSize: 12)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -465,16 +528,46 @@ class _EntityTile extends StatelessWidget {
 }
 
 class _ConnectionDot extends StatelessWidget {
-  final bool connected;
-  const _ConnectionDot({required this.connected});
+  final HaConnectionState state;
+  const _ConnectionDot({required this.state});
+
   @override
   Widget build(BuildContext context) {
+    final color = switch (state) {
+      HaConnectionState.connected => Colors.green,
+      HaConnectionState.reconnecting => Colors.orange,
+      HaConnectionState.connecting => Colors.orange,
+      HaConnectionState.disconnected => Colors.grey,
+    };
     return Container(
       width: 8,
       height: 8,
-      decoration: BoxDecoration(
-        color: connected ? Colors.amber : Colors.grey,
-        shape: BoxShape.circle,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _ReconnectingBanner extends StatelessWidget {
+  const _ReconnectingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Colors.orange.shade700,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: Colors.white),
+          ),
+          SizedBox(width: 10),
+          Text('Reconnecting to Home Assistant…',
+              style: TextStyle(color: Colors.white, fontSize: 12)),
+        ],
       ),
     );
   }
@@ -546,62 +639,6 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Domain → icon / color / label
-// ---------------------------------------------------------------------------
-
-IconData _domainIcon(String domain) {
-  switch (domain) {
-    case 'light':
-      return Icons.lightbulb;
-    case 'switch':
-      return Icons.toggle_on;
-    case 'cover':
-      return Icons.blinds;
-    case 'climate':
-      return Icons.thermostat;
-    case 'media_player':
-      return Icons.speaker;
-    case 'fan':
-      return Icons.air;
-    case 'lock':
-      return Icons.lock;
-    case 'binary_sensor':
-      return Icons.sensors;
-    case 'sensor':
-      return Icons.show_chart;
-    case 'vacuum':
-      return Icons.cleaning_services;
-    default:
-      return Icons.circle;
-  }
-}
-
-Color _domainColor(String domain) {
-  switch (domain) {
-    case 'light':
-      return Colors.amber;
-    case 'switch':
-    case 'fan':
-      return Colors.blueAccent;
-    case 'cover':
-      return Colors.purple;
-    case 'climate':
-      return Colors.redAccent;
-    case 'media_player':
-      return Colors.deepPurple;
-    case 'lock':
-      return Colors.brown;
-    case 'binary_sensor':
-    case 'sensor':
-      return Colors.green;
-    case 'vacuum':
-      return Colors.teal;
-    default:
-      return Colors.indigo;
-  }
-}
-
 IconData _areaIcon(String name) {
   final n = name.toLowerCase();
   if (n.contains('living')) return Icons.weekend;
@@ -612,14 +649,4 @@ IconData _areaIcon(String name) {
   if (n.contains('office')) return Icons.work;
   if (n.contains('outside') || n.contains('garden')) return Icons.park;
   return Icons.home;
-}
-
-String _stateLabel(HaState e) {
-  final unit = e.unit;
-  if (e.domain == 'light' && e.isOn && e.brightness != null) {
-    final pct = (e.brightness! / 255 * 100).round();
-    return '$pct%';
-  }
-  if (unit != null && unit.isNotEmpty) return '${e.state} $unit';
-  return e.state;
 }
