@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/ha_client.dart';
 import '../services/ha_connection_settings.dart';
 
 /// Modal sheet for entering the HA base URL and a long-lived access token.
@@ -16,7 +17,9 @@ class _HaSettingsSheetState extends State<HaSettingsSheet> {
   late final TextEditingController _urlCtrl;
   late final TextEditingController _tokenCtrl;
   bool _saving = false;
+  bool _testing = false;
   String? _error;
+  bool? _testResult;
 
   @override
   void initState() {
@@ -32,23 +35,59 @@ class _HaSettingsSheetState extends State<HaSettingsSheet> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  String? _validate() {
     final url = _urlCtrl.text.trim();
     final token = _tokenCtrl.text.trim();
     if (url.isEmpty || token.isEmpty) {
-      setState(() => _error = 'URL and token are required.');
-      return;
+      return 'URL and token are required.';
     }
     final parsed = Uri.tryParse(url);
     if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
-      setState(() => _error = 'Invalid URL (use https://host:8123).');
+      return 'Invalid URL (use https://host:8123).';
+    }
+    return null;
+  }
+
+  Future<void> _testConnection() async {
+    final invalid = _validate();
+    if (invalid != null) {
+      setState(() {
+        _error = invalid;
+        _testResult = null;
+      });
+      return;
+    }
+    setState(() {
+      _testing = true;
+      _error = null;
+      _testResult = null;
+    });
+    final settings = HaConnectionSettings(
+      baseUrl: _urlCtrl.text.trim(),
+      token: _tokenCtrl.text.trim(),
+    );
+    final ok = await HaClient.testConnection(settings.restBase, settings.token);
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _testResult = ok;
+    });
+  }
+
+  Future<void> _save() async {
+    final invalid = _validate();
+    if (invalid != null) {
+      setState(() => _error = invalid);
       return;
     }
     setState(() {
       _saving = true;
       _error = null;
     });
-    final settings = HaConnectionSettings(baseUrl: url, token: token);
+    final settings = HaConnectionSettings(
+      baseUrl: _urlCtrl.text.trim(),
+      token: _tokenCtrl.text.trim(),
+    );
     await settings.save();
     if (!mounted) return;
     Navigator.of(context).pop(settings);
@@ -98,16 +137,47 @@ class _HaSettingsSheetState extends State<HaSettingsSheet> {
                 const SizedBox(height: 8),
                 Text(_error!, style: const TextStyle(color: Colors.red)),
               ],
+              if (_testResult != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      _testResult! ? Icons.check_circle : Icons.error,
+                      size: 18,
+                      color: _testResult! ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _testResult!
+                          ? 'Connected — token accepted.'
+                          : 'Unreachable or token rejected.',
+                      style: TextStyle(
+                        color: _testResult! ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: [
                   TextButton(
-                    onPressed: _saving
-                        ? null
-                        : () => Navigator.of(context).pop(),
+                    onPressed:
+                        _saving ? null : () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
                   ),
                   const Spacer(),
+                  OutlinedButton(
+                    onPressed: _saving || _testing ? null : _testConnection,
+                    child: _testing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Test'),
+                  ),
+                  const SizedBox(width: 12),
                   FilledButton(
                     onPressed: _saving ? null : _save,
                     child: _saving

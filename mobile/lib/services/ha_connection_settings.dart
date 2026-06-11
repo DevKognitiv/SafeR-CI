@@ -13,12 +13,28 @@ class HaConnectionSettings {
 
   bool get isComplete => baseUrl.isNotEmpty && token.isNotEmpty;
 
-  /// Returns `wss://host:port/api/websocket` (or `ws://` for http base URLs).
+  /// Base URL normalized for REST calls: scheme + host + port + any path
+  /// prefix (reverse-proxy installs like https://host/homeassistant),
+  /// without a trailing slash.
+  String get restBase {
+    final uri = Uri.parse(baseUrl);
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    return '${uri.scheme}://${uri.host}$port${_trimmedPath(uri)}';
+  }
+
+  /// `wss://host:port[/prefix]/api/websocket` (or `ws://` for http bases).
   String get wsUrl {
     final uri = Uri.parse(baseUrl);
     final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
     final port = uri.hasPort ? ':${uri.port}' : '';
-    return '$scheme://${uri.host}$port/api/websocket';
+    return '$scheme://${uri.host}$port${_trimmedPath(uri)}/api/websocket';
+  }
+
+  static String _trimmedPath(Uri uri) {
+    var path = uri.path;
+    if (path.isEmpty || path == '/') return '';
+    if (path.endsWith('/')) path = path.substring(0, path.length - 1);
+    return path;
   }
 
   static Future<HaConnectionSettings> load() async {

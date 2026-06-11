@@ -21,6 +21,10 @@ class HomeAssistantService {
   final String? username;
   final String? password;
 
+  /// Enable TLS (typically with port 8883). Required for brokers exposed
+  /// beyond the local network.
+  final bool useTls;
+
   MqttServerClient? _client;
   final StreamController<Map<String, dynamic>> _alertController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -32,6 +36,7 @@ class HomeAssistantService {
     String? clientId,
     this.username,
     this.password,
+    this.useTls = false,
   }) : clientId = clientId ?? 'safer-mobile-${DateTime.now().millisecondsSinceEpoch}';
 
   /// Stream of incoming messages from `safer/app/updates` and
@@ -47,6 +52,7 @@ class HomeAssistantService {
       ..logging(on: false)
       ..keepAlivePeriod = 30
       ..autoReconnect = true
+      ..secure = useTls
       ..onDisconnected = _onDisconnected
       ..onConnected = _onConnected;
 
