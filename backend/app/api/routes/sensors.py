@@ -3,6 +3,7 @@ SafeR CI — Sensors API Routes
 Receives sensor state updates from Home Assistant. Called by the
 `safer_sensor_update` REST command whenever a tracked HA entity changes.
 """
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -10,6 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = logging.getLogger("safer.sensors")
 
 
 class SensorUpdate(BaseModel):
@@ -56,5 +58,9 @@ async def _ingest_sensor(
     attributes: Dict[str, Any],
     received_at: datetime,
 ) -> None:
-    # Hook for SensorService.ingest(); stub for now.
-    return None
+    # Hook for SensorService.ingest(); logs here so HA can verify the
+    # request reached the backend during dev / CI smoke tests.
+    logger.debug(
+        "sensor entity=%s state=%s at=%s attrs=%s",
+        entity_id, state, received_at.isoformat(), attributes,
+    )

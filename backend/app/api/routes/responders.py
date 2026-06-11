@@ -4,6 +4,7 @@ Dispatches responders (police, fire, medical) to a zone or incident.
 Called by Home Assistant automations via the `safer_dispatch_responder`
 REST command (see ha-config/rest_commands.yaml).
 """
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -11,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = logging.getLogger("safer.responders")
 
 
 class ResponderDispatchRequest(BaseModel):
@@ -64,6 +66,9 @@ async def _notify_dispatch(
     incident_id: Optional[str],
     priority: str,
 ) -> None:
-    # Wired to NotificationService in production; intentionally a no-op stub
-    # here so HA automations can hit the endpoint during integration tests.
-    return None
+    # Wired to NotificationService in production; logs here so HA
+    # automations can verify the request reached the backend in dev / CI.
+    logger.info(
+        "dispatch type=%s zone=%s incident=%s priority=%s",
+        responder_type, zone, incident_id, priority,
+    )

@@ -3,6 +3,7 @@ SafeR CI — Broadcast API Routes
 Broadcasts a critical alert to all configured zones / channels.
 Called by Home Assistant via the `safer_broadcast_all` REST command.
 """
+import logging
 from datetime import datetime
 from typing import List, Optional
 
@@ -10,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = logging.getLogger("safer.broadcast")
 
 ALLOWED_CHANNELS = {"push", "sms", "mqtt", "whatsapp", "email"}
 
@@ -63,6 +65,9 @@ async def _fanout_broadcast(
     channels: List[str],
     priority: str,
 ) -> None:
-    # Production wires this to NotificationService.broadcast(); kept as a stub
-    # so HA can drive end-to-end integration tests against a fresh deploy.
-    return None
+    # Production wires this to NotificationService.broadcast(); logs here so
+    # HA can drive end-to-end integration tests against a fresh deploy.
+    logger.info(
+        "broadcast zone=%s channels=%s priority=%s message=%r",
+        zone, channels, priority, message,
+    )
