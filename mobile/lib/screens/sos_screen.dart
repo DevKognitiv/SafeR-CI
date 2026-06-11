@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../services/api_service.dart';
+import '../services/ha_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/sos_button.dart';
@@ -25,6 +27,11 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  late final HomeAssistantService _haService;
+  StreamSubscription<Map<String, dynamic>>? _haSub;
+  Map<String, dynamic>? _activeAlert;
+  String _systemStatus = 'Connexion à Home Assistant...';
+
   @override
   void initState() {
     super.initState();
@@ -35,11 +42,57 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
     _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _haService = HomeAssistantService(
+      host: const String.fromEnvironment(
+        'HA_MQTT_HOST',
+        defaultValue: 'homeassistant.local',
+      ),
+      port: int.fromEnvironment('HA_MQTT_PORT', defaultValue: 1883),
+    );
+    _initHa();
+  }
+
+  Future<void> _initHa() async {
+    try {
+      await _haService.connect();
+      _haSub = _haService.alerts.listen(_onHaMessage);
+      if (mounted) {
+        setState(() => _systemStatus = 'En ligne');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _systemStatus = 'Hors ligne (HA): $e');
+      }
+    }
+  }
+
+  void _onHaMessage(Map<String, dynamic> event) {
+    if (!mounted) return;
+    final topic = event['topic'] as String?;
+    final payload = event['payload'];
+    if (topic == HomeAssistantService.topicUpdates) {
+      setState(() => _activeAlert = {
+            'payload': payload,
+            'received_at': event['received_at'],
+          });
+    } else if (topic == HomeAssistantService.topicStatus) {
+      setState(() => _systemStatus = _formatStatus(payload));
+    }
+  }
+
+  String _formatStatus(dynamic payload) {
+    if (payload is Map && payload['state'] is String) {
+      return payload['state'] as String;
+    }
+    return payload?.toString() ?? 'inconnu';
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _haSub?.cancel();
+    _haService.dispose();
     super.dispose();
   }
 
@@ -62,7 +115,12 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
         source: 'mobile_app',
       );
 
-      // 3. Local notification
+      // 3. Publish to HA over MQTT (best-effort).
+      try {
+        await _haService.sendSOS(position.latitude, position.longitude);
+      } catch (_) {/* HA offline is non-fatal — API call already succeeded. */}
+
+      // 4. Local notification
       await NotificationService.showLocalAlert(
         title: '🚨 Alerte envoyée',
         body: 'Les secours ont été notifiés. Restez en sécurité.',
@@ -93,6 +151,13 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Real-time alert banner from safer/app/updates
+            if (_activeAlert != null)
+              _AlertBanner(
+                payload: _activeAlert!['payload'],
+                onDismiss: () => setState(() => _activeAlert = null),
+              ),
+
             // Header
             const Padding(
               padding: EdgeInsets.all(24),
@@ -105,6 +170,12 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
                   letterSpacing: 2,
                 ),
               ),
+            ),
+
+            // System status from safer/app/status
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _StatusPill(status: _systemStatus),
             ),
 
             const Spacer(),
@@ -148,6 +219,80 @@ class _SOSScreenState extends ConsumerState<SOSScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AlertBanner extends StatelessWidget {
+  final dynamic payload;
+  final VoidCallback onDismiss;
+  const _AlertBanner({required this.payload, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (payload is Map && payload['title'] is String)
+        ? payload['title'] as String
+        : 'Alerte en direct';
+    final body = (payload is Map && payload['message'] is String)
+        ? payload['message'] as String
+        : payload.toString();
+
+    return Material(
+      color: Colors.amber.shade800,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.notifications_active, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold)),
+                    Text(body,
+                        style: const TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: onDismiss,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String status;
+  const _StatusPill({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud, color: Colors.white70, size: 16),
+          const SizedBox(width: 6),
+          Text('Système: $status',
+              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        ],
       ),
     );
   }
