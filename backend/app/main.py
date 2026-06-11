@@ -21,7 +21,7 @@ from app.core.database import init_db
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Application lifecycle manager."""
     await init_db()
     yield

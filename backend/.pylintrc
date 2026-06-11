@@ -1,0 +1,20 @@
+[MESSAGES CONTROL]
+# Disable checks that fire on idiomatic FastAPI / Pydantic / SQLAlchemy code.
+# Errors (E) and most warnings stay enabled so real defects still fail CI.
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-positional-arguments,
+    fixme,
+    broad-exception-caught,
+    invalid-name,
+    import-outside-toplevel,
+    cyclic-import,
+    unused-import,
+    redefined-outer-name
+
+[FORMAT]
+max-line-length=100

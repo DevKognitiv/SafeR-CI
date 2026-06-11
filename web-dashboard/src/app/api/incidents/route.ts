@@ -1,46 +1,59 @@
 import { NextResponse } from 'next/server';
-import { MOCK_INCIDENTS } from '@/lib/mock-data';
-import type { Incident } from '@/types/incident';
 
-// In-memory store for demo incidents (resets on cold start)
-let incidents: Incident[] = [...MOCK_INCIDENTS];
+// Server-side base URL for the SafeR FastAPI backend. Kept off
+// NEXT_PUBLIC_* so it stays a server secret in production. Falls back
+// to the public var for convenience in local dev.
+const API_BASE =
+  process.env.SAFER_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status');
-  const type = searchParams.get('incident_type');
-  
-  let filtered = incidents;
-  if (status && status !== 'all') {
-    filtered = filtered.filter(i => i.status === status);
+  // Forward filters the backend understands.
+  const out = new URLSearchParams();
+  for (const k of ['status', 'incident_type', 'lat', 'lon', 'radius_km', 'limit', 'offset']) {
+    const v = searchParams.get(k);
+    if (v !== null) out.set(k, v);
   }
-  if (type) {
-    filtered = filtered.filter(i => i.incident_type === type);
+  const upstream = `${API_BASE}/api/v1/incidents/?${out.toString()}`;
+  try {
+    const res = await fetch(upstream, { cache: 'no-store' });
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: 'upstream', status: res.status, detail: await safeText(res) },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json(await res.json());
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: 'unreachable', detail: (e as Error).message, upstream },
+      { status: 503 },
+    );
   }
-  
-  return NextResponse.json(filtered.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  ));
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  
-  const newIncident: Incident = {
-    id: Date.now().toString(),
-    incident_type: body.incident_type || 'panic',
-    severity: body.severity || 'critical',
-    status: 'open',
-    location_lat: body.location_lat || 5.3600,
-    location_lon: body.location_lon || -4.0083,
-    location_name: body.location_name || 'Position inconnue',
-    commune: body.commune,
-    description: body.description || 'Alerte SOS depuis l\'application web',
-    created_at: new Date().toISOString(),
-    source: body.source || 'web_dashboard',
-  };
-  
-  incidents = [newIncident, ...incidents];
-  
-  return NextResponse.json(newIncident, { status: 201 });
+  const body = await request.text(); // pass through opaquely
+  const upstream = `${API_BASE}/api/v1/incidents/`;
+  try {
+    const res = await fetch(upstream, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      cache: 'no-store',
+    });
+    const payload = await res.json().catch(() => ({}));
+    return NextResponse.json(payload, { status: res.status });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: 'unreachable', detail: (e as Error).message, upstream },
+      { status: 503 },
+    );
+  }
+}
+
+async function safeText(res: Response): Promise<string> {
+  try { return await res.text(); } catch { return ''; }
 }
