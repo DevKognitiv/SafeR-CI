@@ -43,8 +43,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # With allow_credentials=True, wildcards echo the caller's origin/headers and
+    # defeat the allowlist — restrict to exactly what the browser dashboard uses.
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Routers
