@@ -3,10 +3,15 @@ SafeR CI — Incidents API Routes
 Handles incident creation from HA nodes, mobile app, and SMS gateway
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import (
+    APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request,
+)
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
+from app.core.security import require_api_token, verify_ha_signature
 from app.schemas.incident import IncidentCreate, IncidentResponse, IncidentUpdate
 from app.services.incident_service import IncidentService
 from app.services.notification_service import NotificationService
@@ -14,8 +19,30 @@ from app.services.notification_service import NotificationService
 router = APIRouter()
 
 
-@router.post("/", response_model=IncidentResponse, status_code=201)
+class HAWebhookPayload(BaseModel):
+    """Validated payload for the Home Assistant webhook.
+
+    Enforces sane GPS bounds and numeric coercion, which also removes the
+    unvalidated ``float()`` denial-of-service on the raw dict.
+    """
+
+    incident_type: str = "other"
+    severity: str = "medium"
+    location_lat: float = Field(5.3600, ge=-90.0, le=90.0)
+    location_lon: float = Field(-4.0083, ge=-180.0, le=180.0)
+    hub_id: Optional[str] = None
+    triggered_by: Optional[str] = None
+
+
+@router.post(
+    "/",
+    response_model=IncidentResponse,
+    status_code=201,
+    dependencies=[Depends(require_api_token)],
+)
+@limiter.limit("10/minute")
 async def create_incident(
+    request: Request,
     incident_data: IncidentCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -37,7 +64,11 @@ async def create_incident(
     return incident
 
 
-@router.get("/", response_model=List[IncidentResponse])
+@router.get(
+    "/",
+    response_model=List[IncidentResponse],
+    dependencies=[Depends(require_api_token)],
+)
 async def get_incidents(
     lat: Optional[float] = Query(None, description="Center latitude"),
     lon: Optional[float] = Query(None, description="Center longitude"),
@@ -69,7 +100,11 @@ async def get_incidents(
     return incidents
 
 
-@router.get("/{incident_id}", response_model=IncidentResponse)
+@router.get(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    dependencies=[Depends(require_api_token)],
+)
 async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
     """Get a single incident by ID."""
     service = IncidentService(db)
@@ -79,7 +114,11 @@ async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
     return incident
 
 
-@router.patch("/{incident_id}", response_model=IncidentResponse)
+@router.patch(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    dependencies=[Depends(require_api_token)],
+)
 async def update_incident(
     incident_id: str,
     update_data: IncidentUpdate,
@@ -93,24 +132,29 @@ async def update_incident(
     return incident
 
 
-@router.post("/webhook/ha")
+@router.post("/webhook/ha", dependencies=[Depends(verify_ha_signature)])
+@limiter.limit("10/minute")
 async def ha_webhook(
-    payload: dict,
+    request: Request,
+    payload: HAWebhookPayload,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Webhook endpoint called by Home Assistant automations.
     Translates HA event data to SafeR incident format.
+
+    The raw body must carry a valid ``X-Hub-Signature-256`` HMAC (verified by
+    ``verify_ha_signature``); the payload is schema-validated (GPS bounds).
     """
     service = IncidentService(db)
     incident_data = IncidentCreate(
-        incident_type=payload.get("incident_type", "other"),
-        severity=payload.get("severity", "medium"),
-        location_lat=float(payload.get("location_lat", 5.3600)),
-        location_lon=float(payload.get("location_lon", -4.0083)),
-        hub_id=payload.get("hub_id"),
-        triggered_by=payload.get("triggered_by"),
+        incident_type=payload.incident_type,
+        severity=payload.severity,
+        location_lat=payload.location_lat,
+        location_lon=payload.location_lon,
+        hub_id=payload.hub_id,
+        triggered_by=payload.triggered_by,
         source="ha_node",
     )
     incident = await service.create_incident(incident_data)
