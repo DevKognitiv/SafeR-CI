@@ -10,8 +10,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://safer:safer_pass@db:5432/safer_ci
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://safer:${POSTGRES_PASSWORD}@db:5432/safer_ci
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
     env_file:
       - .env
     depends_on:
@@ -28,10 +28,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: safer
-      POSTGRES_PASSWORD: safer_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: safer_ci
-    ports:
-      - "5432:5432"
+    # No host port publishing: db is only reachable on the internal compose network.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -44,8 +43,8 @@ services:
     image: redis:7-alpine
     container_name: safer_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port publishing; require a password for any in-network client.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     volumes:
       - redis_data:/data
 

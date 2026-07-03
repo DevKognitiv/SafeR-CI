@@ -6,10 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.routes import incidents, alerts, users, health
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.rate_limit import limiter
 
 
 @asynccontextmanager
@@ -28,14 +32,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting (slowapi) — shared limiter keyed by client IP.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # With allow_credentials=True, wildcards echo the caller's origin/headers and
+    # defeat the allowlist — restrict to exactly what the browser dashboard uses.
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Routers

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
+    # API auth — shared bearer token for the emergency API (no user system yet).
+    # Callers (mobile app, SMS gateway, dashboard) send: Authorization: Bearer <token>
+    SAFER_API_TOKEN: str = ""
+
     # Database
     DATABASE_URL: str
     DATABASE_POOL_SIZE: int = 10
