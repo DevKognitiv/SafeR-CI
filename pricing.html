@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing — SafeR Smart Home Security</title>
+  <meta
+    name="description"
+    data-i18n-meta="meta.pricing.description"
+    content="Simple, transparent pricing for SafeR smart home security. Self-host for free, or let us run your safety hub — plans for homes, communities, and enterprises."
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-i18n-title="meta.pricing.title">
+  <header class="site-header" id="site-header"></header>
+
+  <main>
+    <!-- Hero -->
+    <section class="page-hero">
+      <div class="container">
+        <span class="page-hero__eyebrow" data-i18n="pricing.eyebrow">Pricing</span>
+        <h1 data-i18n="pricing.title">Security for every home. Priced for every budget.</h1>
+        <p data-i18n="pricing.subtitle">
+          Start free with the open-source platform, or let us host your safety hub.
+          Every plan includes the SOS mobile app, real-time alerts, and community
+          incident maps.
+        </p>
+
+        <!-- Billing period toggle -->
+        <div class="billing-toggle">
+          <span
+            class="billing-toggle__label is-active"
+            id="label-monthly"
+            data-i18n="billing.monthly"
+          >Monthly</span>
+          <button
+            type="button"
+            class="billing-switch"
+            id="billing-switch"
+            role="switch"
+            aria-checked="false"
+            aria-labelledby="label-monthly label-annual"
+          >
+            <span class="billing-switch__thumb"></span>
+          </button>
+          <span
+            class="billing-toggle__label"
+            id="label-annual"
+            data-i18n="billing.annual"
+          >Annual</span>
+          <span class="billing-toggle__badge" data-i18n="billing.save">Save 20%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plans -->
+    <section class="pricing-section">
+      <div class="container">
+        <div class="pricing-grid">
+          <!-- Open Source -->
+          <article class="plan-card">
+            <h2 class="plan-card__name" data-i18n="plan.oss.name">Open Source</h2>
+            <p class="plan-card__desc" data-i18n="plan.oss.desc">
+              Self-host the full SafeR platform on your own hardware. Everything,
+              forever free.
+            </p>
+            <div class="plan-card__price">
+              <span class="plan-card__amount">$0</span>
+            </div>
+            <p class="plan-card__billing-note" data-i18n="billing.note.forever">
+              Free forever. No card required.
+            </p>
+            <ul class="plan-card__features">
+              <li data-i18n="plan.oss.f1">Full platform, unlimited sensors</li>
+              <li data-i18n="plan.oss.f2">Home Assistant integration</li>
+              <li data-i18n="plan.oss.f3">SOS mobile app (iOS + Android)</li>
+              <li data-i18n="plan.oss.f4">Community support on GitHub</li>
+            </ul>
+            <a
+              class="btn btn-secondary btn-block"
+              href="https://github.com/DevKognitiv/SafeR-CI"
+              data-i18n="plan.oss.cta"
+            >Deploy for free</a>
+          </article>
+
+          <!-- Home (featured) -->
+          <article class="plan-card plan-card--featured">
+            <span class="plan-card__badge" data-i18n="plan.home.badge">Most popular</span>
+            <h2 class="plan-card__name" data-i18n="plan.home.name">Home</h2>
+            <p class="plan-card__desc" data-i18n="plan.home.desc">
+              Managed cloud hub for one household — we handle hosting, updates,
+              and backups.
+            </p>
+            <div class="plan-card__price">
+              <span
+                class="plan-card__amount"
+                data-price-monthly="$9"
+                data-price-annual="$7"
+              >$9</span>
+              <span class="plan-card__period" data-i18n="billing.perMonth">/month</span>
+            </div>
+            <p
+              class="plan-card__billing-note"
+              data-billing-note
+              data-i18n="billing.note.monthly"
+            >Billed monthly</p>
+            <ul class="plan-card__features">
+              <li data-i18n="plan.home.f1">Hosted hub for 1 home, 20 sensors</li>
+              <li data-i18n="plan.home.f2">Push + SMS alerts (100 SMS/mo)</li>
+              <li data-i18n="plan.home.f3">30-day incident history</li>
+              <li data-i18n="plan.home.f4">Automatic updates &amp; backups</li>
+              <li data-i18n="plan.home.f5">Email support</li>
+            </ul>
+            <a
+              class="btn btn-primary btn-block"
+              href="signup.html?plan=home"
+              data-i18n="plan.home.cta"
+            >Start 14-day free trial</a>
+          </article>
+
+          <!-- Community -->
+          <article class="plan-card">
+            <h2 class="plan-card__name" data-i18n="plan.community.name">Community</h2>
+            <p class="plan-card__desc" data-i18n="plan.community.desc">
+              A shared safety hub for neighborhoods, co-ops, and residential
+              compounds.
+            </p>
+            <div class="plan-card__price">
+              <span
+                class="plan-card__amount"
+                data-price-monthly="$39"
+                data-price-annual="$31"
+              >$39</span>
+              <span class="plan-card__period" data-i18n="billing.perMonth">/month</span>
+            </div>
+            <p
+              class="plan-card__billing-note"
+              data-billing-note
+              data-i18n="billing.note.monthly"
+            >Billed monthly</p>
+            <ul class="plan-card__features">
+              <li data-i18n="plan.community.f1">Up to 50 homes on one hub</li>
+              <li data-i18n="plan.community.f2">Shared incident map &amp; responder mode</li>
+              <li data-i18n="plan.community.f3">1,000 SMS alerts per month</li>
+              <li data-i18n="plan.community.f4">1-year incident history &amp; analytics</li>
+              <li data-i18n="plan.community.f5">Priority support</li>
+            </ul>
+            <a
+              class="btn btn-secondary btn-block"
+              href="signup.html?plan=community"
+              data-i18n="plan.community.cta"
+            >Start 14-day free trial</a>
+          </article>
+
+          <!-- Enterprise -->
+          <article class="plan-card">
+            <h2 class="plan-card__name" data-i18n="plan.enterprise.name">Enterprise</h2>
+            <p class="plan-card__desc" data-i18n="plan.enterprise.desc">
+              For cities, campuses, and security providers running SafeR at scale.
+            </p>
+            <div class="plan-card__price">
+              <span class="plan-card__amount" data-i18n="billing.custom">Custom</span>
+            </div>
+            <p class="plan-card__billing-note" data-i18n="billing.note.contact">
+              Tailored to your deployment
+            </p>
+            <ul class="plan-card__features">
+              <li data-i18n="plan.enterprise.f1">Unlimited homes &amp; multi-node hubs</li>
+              <li data-i18n="plan.enterprise.f2">Regional analytics dashboard</li>
+              <li data-i18n="plan.enterprise.f3">LoRaWAN &amp; offline-first deployments</li>
+              <li data-i18n="plan.enterprise.f4">SLA, SSO &amp; dedicated onboarding</li>
+              <li data-i18n="plan.enterprise.f5">24/7 phone support</li>
+            </ul>
+            <a
+              class="btn btn-secondary btn-block"
+              href="mailto:sales@safer.example"
+              data-i18n="plan.enterprise.cta"
+            >Contact sales</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Every plan includes -->
+    <section class="included-section">
+      <div class="container">
+        <h2 data-i18n="included.title">Every plan includes</h2>
+        <div class="included-grid">
+          <div class="included-item">
+            <span class="included-item__icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 3" />
+              </svg>
+            </span>
+            <div>
+              <h3 data-i18n="included.sos.title">One-tap SOS</h3>
+              <p data-i18n="included.sos.desc">Instant panic alerts with live GPS location.</p>
+            </div>
+          </div>
+          <div class="included-item">
+            <span class="included-item__icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12a10 10 0 0 1 20 0" />
+                <path d="M6 12a6 6 0 0 1 12 0" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              </svg>
+            </span>
+            <div>
+              <h3 data-i18n="included.sensors.title">Sensor coverage</h3>
+              <p data-i18n="included.sensors.desc">Panic buttons, smoke, fire, and flood sensors.</p>
+            </div>
+          </div>
+          <div class="included-item">
+            <span class="included-item__icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 1l22 22" />
+                <path d="M16.7 11.6A6 6 0 0 0 6.4 8.3M12 20h.01M5 12.5a10 10 0 0 1 2.2-1.8M8.5 16a6 6 0 0 1 3.5-1.5" />
+              </svg>
+            </span>
+            <div>
+              <h3 data-i18n="included.offline.title">Works offline</h3>
+              <p data-i18n="included.offline.desc">Local hub keeps protecting you without internet.</p>
+            </div>
+          </div>
+          <div class="included-item">
+            <span class="included-item__icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l8 3.5v5.7c0 5-3.4 9.3-8 10.8-4.6-1.5-8-5.8-8-10.8V5.5L12 2z" />
+                <path d="M8.5 12l2.4 2.4 4.6-4.8" />
+              </svg>
+            </span>
+            <div>
+              <h3 data-i18n="included.privacy.title">Private by design</h3>
+              <p data-i18n="included.privacy.desc">Your data stays on your hub. Open source, auditable.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq-section">
+      <div class="container">
+        <h2 data-i18n="faq.title">Frequently asked questions</h2>
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary data-i18n="faq.q1">Is the open-source plan really free?</summary>
+            <p data-i18n="faq.a1">
+              Yes. SafeR is Apache 2.0 licensed — the complete platform is free to
+              self-host with no feature gates. Paid plans simply cover managed
+              hosting, SMS delivery, and support.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq.q2">Can I switch between monthly and annual billing?</summary>
+            <p data-i18n="faq.a2">
+              Anytime. Annual billing saves 20% and you can change your billing
+              cycle or plan from your dashboard; changes are prorated automatically.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq.q3">What happens if my internet goes down?</summary>
+            <p data-i18n="faq.a3">
+              Your local hub keeps running automations and sirens offline, and
+              alerts fall back to SMS over GSM. Everything syncs to the cloud once
+              connectivity returns.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq.q4">Do you offer discounts for NGOs and community groups?</summary>
+            <p data-i18n="faq.a4">
+              Yes — registered non-profits and community safety groups get 50% off
+              Community plans. Contact us and we'll set it up.
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-banner">
+      <div class="container">
+        <div class="cta-banner__inner">
+          <h2 data-i18n="cta.title">Ready to make your home safer?</h2>
+          <p data-i18n="cta.subtitle">
+            Join thousands of households protecting what matters most — starting
+            in under 10 minutes.
+          </p>
+          <div class="cta-banner__actions">
+            <a class="btn btn-primary" href="signup.html" data-i18n="cta.primary">Get started free</a>
+            <a class="btn btn-secondary" href="mailto:sales@safer.example" data-i18n="cta.secondary">Talk to sales</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" id="site-footer"></footer>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/i18n-es.js"></script>
+  <script src="js/i18n-zh.js"></script>
+  <script src="js/i18n-ar.js"></script>
+  <script src="js/site-chrome.js"></script>
+  <script>
+    // Monthly / annual billing toggle
+    (function () {
+      "use strict";
+
+      var switchBtn = document.getElementById("billing-switch");
+      var labelMonthly = document.getElementById("label-monthly");
+      var labelAnnual = document.getElementById("label-annual");
+      var annual = false;
+
+      function render() {
+        switchBtn.setAttribute("aria-checked", annual ? "true" : "false");
+        labelMonthly.classList.toggle("is-active", !annual);
+        labelAnnual.classList.toggle("is-active", annual);
+
+        var amounts = document.querySelectorAll("[data-price-monthly]");
+        for (var i = 0; i < amounts.length; i++) {
+          amounts[i].textContent = annual
+            ? amounts[i].getAttribute("data-price-annual")
+            : amounts[i].getAttribute("data-price-monthly");
+        }
+
+        var key = annual ? "billing.note.annual" : "billing.note.monthly";
+        var notes = document.querySelectorAll("[data-billing-note]");
+        for (var j = 0; j < notes.length; j++) {
+          notes[j].setAttribute("data-i18n", key);
+          if (window.SafeRI18n) {
+            notes[j].textContent = window.SafeRI18n.t(key);
+          }
+        }
+      }
+
+      switchBtn.addEventListener("click", function () {
+        annual = !annual;
+        render();
+      });
+      labelMonthly.addEventListener("click", function () {
+        if (annual) { annual = false; render(); }
+      });
+      labelAnnual.addEventListener("click", function () {
+        if (!annual) { annual = true; render(); }
+      });
+
+      // Prices are language-independent, but billing notes are re-translated
+      // by the i18n engine on language change via their data-i18n key —
+      // re-render to keep the current cycle's prices intact.
+      document.addEventListener("safer:langchange", render);
+    })();
+  </script>
+</body>
+</html>
