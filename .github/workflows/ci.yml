@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Only the checks that can genuinely pass today. `backend/` and `mobile/` are
+# scaffolds that do not import or build — see docs/STATUS.md. Add jobs for them
+# when they do, not before; a permanently red pipeline is worse than no pipeline.
+
+jobs:
+  web-dashboard:
+    name: Dashboard — lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web-dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  ha-config:
+    name: HA config — YAML syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Parse every ha-config YAML file
+        run: |
+          python - <<'PY'
+          import glob, sys, yaml
+
+          class HALoader(yaml.SafeLoader):
+              """Home Assistant extends YAML with !secret, !include and friends."""
+
+          for tag in ("!secret", "!include", "!include_dir_merge_list",
+                      "!include_dir_merge_named", "!include_dir_list",
+                      "!include_dir_named", "!env_var"):
+              HALoader.add_constructor(tag, lambda loader, node: None)
+
+          failed = False
+          for path in sorted(glob.glob("ha-config/**/*.yaml*", recursive=True)):
+              try:
+                  yaml.load(open(path, encoding="utf-8"), Loader=HALoader)
+                  print(f"ok   {path}")
+              except yaml.YAMLError as exc:
+                  failed = True
+                  print(f"FAIL {path}\n{exc}", file=sys.stderr)
+          sys.exit(1 if failed else 0)
+          PY
+
+  backend:
+    name: Backend — syntax only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Scaffold: imports are unresolved by design, so this compiles rather than
+      # imports. Promote to a real install + test job once app/core/database.py,
+      # app/schemas/ and app/services/ exist.
+      - run: python -m compileall -q backend/app

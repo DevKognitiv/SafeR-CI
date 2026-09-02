@@ -45,30 +45,33 @@ SafeR CI is a community safety platform built for the realities of Côte d'Ivoir
 
 ## 📦 Repository Structure
 
+> **Component maturity varies a lot.** See [`docs/STATUS.md`](docs/STATUS.md) for the
+> authoritative breakdown of what runs today and what is still a scaffold.
+
 ```
 SafeR-CI/
-├── ha-config/                   # Home Assistant configuration & automations
-│   ├── automations/             # YAML automations (panic, fire, flood)
-│   ├── custom_components/       # Custom HA integrations
-│   ├── dashboards/              # Lovelace UI dashboards
-│   └── configuration.yaml
-├── backend/                     # FastAPI server (Python 3.12)
-│   ├── app/
-│   │   ├── api/routes/          # REST endpoints
-│   │   ├── models/              # SQLAlchemy + PostGIS models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── services/            # Business logic
-│   │   └── main.py
-│   ├── requirements.txt
-│   └── docker-compose.yml
-├── mobile/                      # Flutter app (iOS + Android)
-│   ├── lib/
-│   │   ├── screens/             # SOS, Map, Alerts, Profile
-│   │   ├── widgets/             # Reusable UI components
-│   │   └── services/            # API, location, notifications
-│   └── pubspec.yaml
-├── infrastructure/              # Docker, Nginx, Terraform
-└── docs/                        # Architecture, API, deployment guides
+├── web-dashboard/               # ✅ Next.js 14 incident dashboard — runs today
+│   └── src/
+│       ├── app/                 #    App Router pages + demo API routes
+│       ├── components/          #    SOSButton, IncidentMap, AlertFeed, StatCard
+│       ├── lib/                 #    Demo incident data + helpers
+│       └── types/               #    Shared Incident type
+├── ha-config/                   # ✅ Home Assistant config — complete, untested on hardware
+│   ├── automations/             #    Panic, fire, flood, bidirectional mobile control
+│   ├── dashboards/              #    6-view Lovelace UI
+│   ├── entities/                #    Entity definitions
+│   ├── scripts/                 #    Emergency scripts
+│   ├── configuration.yaml
+│   ├── rest_commands.yaml
+│   └── secrets.yaml.example
+├── backend/                     # 🚧 FastAPI server — scaffold, does not import yet
+│   └── app/
+│       ├── api/routes/          #    incidents.py only
+│       ├── core/                #    config.py only
+│       └── models/              #    incident.py only
+├── mobile/                      # 🚧 Flutter app — scaffold, does not build yet
+│   └── lib/                     #    main.dart, sos_screen.dart, sos_button.dart
+└── docs/                        # Architecture, deployment, status, contributing
 ```
 
 ---
@@ -88,17 +91,19 @@ SafeR-CI/
 | Maps | OpenStreetMap + flutter_map | Zero-cost mapping |
 | Push | Firebase Cloud Messaging | Mobile push alerts |
 | Messaging | WhatsApp Business API | High-penetration CI fallback |
+| Dashboard | **Next.js 14 + TypeScript** | Web incident dashboard |
 | Deploy | Docker Compose + Nginx | Self-hosted or cloud VPS |
 
 ---
 
 ## 🚀 Milestones
 
-### ✅ v0.1 — MVP: Panic Button Alert
+### 🔄 v0.1 — MVP: Panic Button Alert
 - [x] Repository scaffolded
 - [x] HA configuration & automations (panic, fire, flood)
-- [x] FastAPI backend with incident model & routes
-- [x] Flutter SOS screen with one-tap alert
+- [x] Web dashboard with live incident map + SOS (demo data)
+- [ ] FastAPI backend — model & routes drafted, service/schema layer missing
+- [ ] Flutter SOS screen — drafted, app does not build yet
 - [ ] End-to-end test on hardware
 
 ### 🔲 v0.2 — Community Safety Map
@@ -119,18 +124,21 @@ SafeR-CI/
 
 ## 🛠️ Quick Start
 
+The web dashboard is the fastest way to see SafeR CI running:
+
 ```bash
 git clone https://github.com/DevKognitiv/SafeR-CI.git
-cd SafeR-CI
-
-# Start backend
-cd backend && cp .env.example .env && docker-compose up -d
-
-# Run Flutter app
-cd ../mobile && flutter pub get && flutter run
+cd SafeR-CI/web-dashboard
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-See [docs/deployment.md](docs/deployment.md) for the full guide.
+It runs on demo data with an in-memory API — no database or backend required.
+
+For a Home Assistant hub, copy `ha-config/` to your HA `/config/` directory and build
+`secrets.yaml` from `secrets.yaml.example`. See [docs/deployment.md](docs/deployment.md).
+
+The FastAPI backend and Flutter app are **not yet runnable** — see [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
@@ -159,7 +167,8 @@ See [docs/deployment.md](docs/deployment.md) for the full guide.
 
 ## 🤝 Contributing
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). PRs welcome on all layers!
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md), and [docs/STATUS.md](docs/STATUS.md) for where
+help is most needed. PRs welcome on all layers!
 
 ## 📄 License
 

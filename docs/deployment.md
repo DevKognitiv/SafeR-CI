@@ -1,5 +1,11 @@
 # SafeR CI — Deployment Guide
 
+> ⚠️ **Sections 1, 2 and 4 describe the intended deployment, not a working one.**
+> The FastAPI backend has no `Dockerfile` and imports modules that do not exist, so
+> `docker-compose up` fails at build; the Flutter app has no platform directories and
+> cannot be built. Only the Home Assistant node (section 3) and the web dashboard can be
+> deployed today. See [STATUS.md](STATUS.md).
+
 ## Prerequisites
 
 - Linux server (Ubuntu 22.04 LTS recommended)
