@@ -103,7 +103,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight">SafeR CI</h1>
-              <p className="text-xs text-slate-400">Tableau de bord sécurité — Côte d'Ivoire</p>
+              <p className="text-xs text-slate-400">Tableau de bord sécurité — Côte d&apos;Ivoire</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -129,7 +129,7 @@ export default function Dashboard() {
             {/* SOS Button */}
             <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 text-center">
               <p className="text-slate-400 text-sm mb-5 font-medium uppercase tracking-widest">
-                Alerte d'urgence
+                Alerte d&apos;urgence
               </p>
               <SOSButton 
                 onPress={handleSOS} 
@@ -199,7 +199,7 @@ export default function Dashboard() {
 
         {/* Footer */}
         <div className="mt-8 pt-5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-600">
-          <span>SafeR CI — Open-source safety platform for Côte d'Ivoire</span>
+          <span>SafeR CI — Open-source safety platform for Côte d&apos;Ivoire</span>
           <span>Mis à jour: {lastRefresh.toLocaleTimeString('fr-CI')}</span>
         </div>
       </main>
