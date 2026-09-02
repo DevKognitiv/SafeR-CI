@@ -1,7 +1,12 @@
 # SafeR-CI — Component Status
 
-Ground truth for what actually runs. Keep this current; `CLAUDE.md` points here and it is the
-cheapest way to stop anyone (human or agent) re-deriving the state of the repo from scratch.
+Ground truth for what actually runs **on `main`**. Keep this current; `CLAUDE.md` points here and
+it is the cheapest way to stop anyone (human or agent) re-deriving the state of the repo from
+scratch.
+
+**Read "Open PRs" at the bottom before starting work.** Several gaps described here are already
+solved on unmerged branches. Writing them again is the most expensive mistake available in this
+repo right now.
 
 Last verified: 2026-09-02.
 
@@ -42,7 +47,11 @@ automations, 7 emergency scripts, a 6-view Lovelace dashboard, and REST commands
 - `rest_commands.yaml` targets backend endpoints that are not implemented (see below).
 - Requires a real `secrets.yaml` (gitignored) built from `secrets.yaml.example`.
 
-## `backend/` — scaffold, does not import
+## `backend/` — scaffold on `main`, does not import
+
+> **A fix already exists in PR #10** (`feature/backend-e2e`), which adds every module listed below
+> and reports end-to-end verification against PostGIS. Do not re-implement this; review and merge
+> that PR instead.
 
 Four files exist: `main.py`, `core/config.py`, `models/incident.py`, `api/routes/incidents.py`.
 
@@ -71,7 +80,11 @@ are syntactically valid, just unwired.
 `docker-compose.yml` also hardcodes `safer:safer_pass` as the Postgres credentials and publishes
 5432 and 6379 to the host. That is fine for a laptop, not for a deployment.
 
-## `mobile/` — scaffold, does not build
+## `mobile/` — scaffold on `main`, does not build
+
+> **PR #9** (`feature/ha-mobile-integration`) adds an MQTT `HomeAssistantService`, wires the SOS
+> screen to it, and carries an "Aurora" design system with i18n. It does not add the missing
+> `core/` and `screens/` files listed below, so the app still would not build from that branch alone.
 
 Three files exist: `main.dart`, `screens/sos_screen.dart`, `widgets/sos_button.dart`.
 
@@ -92,3 +105,31 @@ No `android/`, `ios/`, or `test/` directories. `flutter run` cannot work.
 - **No tests anywhere**, in any component.
 - **CI** (`.github/workflows/ci.yml`) checks the dashboard build, ha-config YAML syntax, and backend
   syntax only. It intentionally does not try to run the backend or build the mobile app.
+
+---
+
+## Open PRs — read before starting anything
+
+Five PRs are open against `main`; the oldest has been open since 3 May. `main` has not moved since,
+so every branch is working from the same stale base and they overlap with each other. This is
+currently the largest source of duplicated effort in the project.
+
+| PR | Branch | Adds | State |
+|---|---|---|---|
+| [#9](https://github.com/DevKognitiv/SafeR-CI/pull/9) | `feature/ha-mobile-integration` | Flutter MQTT service, 3 backend endpoints for `rest_commands.yaml`, Aurora design + i18n | Draft |
+| [#10](https://github.com/DevKognitiv/SafeR-CI/pull/10) | `feature/backend-e2e` | **Makes the backend boot**: `core/database.py`, `schemas/`, `services/`, health/alerts/users routes, `__init__.py`, `.env.example` | Draft |
+| [#11](https://github.com/DevKognitiv/SafeR-CI/pull/11) | `security/critical-fixes-2026-07-02` | **Auth on the emergency API, HMAC on the HA webhook, rate limiting, CVE bump** | Ready |
+| [#12](https://github.com/DevKognitiv/SafeR-CI/pull/12) | `claude/safer-pricing-page-xb6exw` | Marketing pricing page + shared site chrome, 4 languages | Draft |
+| [#13](https://github.com/DevKognitiv/SafeR-CI/pull/13) | `claude/code-audit-cleanup-kve4ls` | This audit: docs, CI, gitignore | Draft |
+
+Known overlaps to resolve when merging:
+
+- **#10 and #13 both add `backend/.env.example`.** Keep #10's — it was written against the modules
+  it also adds.
+- **#10, #9 and #13 all touch `.gitignore`.** #9 adds a `!mobile/lib/**` exception to escape the
+  Python `lib/` rule; #13 removes that rule entirely, so the exception becomes unnecessary.
+- **#10 and #13 both add a dashboard lockfile.** Same file, regenerate once after merging.
+- **#11 builds on backend modules that only exist in #10.** Merge order matters: #10 before #11.
+
+Suggested order: **#11 → #10** (or #10 → #11 if #11 does not apply cleanly to `main`), then #13,
+then #9, then #12. Update this file as they land.

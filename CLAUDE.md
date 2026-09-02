@@ -1,8 +1,10 @@
 # SafeR-CI — Agent Brief
 
 Open-source community safety platform for Côte d'Ivoire. Four components, **very different maturity**.
-Read `docs/STATUS.md` before touching `backend/` or `mobile/` — most of their imports point at files
-that were never written. Do not go hunting for them.
+Read `docs/STATUS.md` before touching `backend/` or `mobile/` — on `main`, most of their imports
+point at files that were never written. Do not go hunting for them, and **do not write them**:
+five PRs are open against a `main` that has not moved since May, and the backend gap is already
+solved in PR #10. `docs/STATUS.md` lists all five and their overlaps.
 
 ## Component map
 
