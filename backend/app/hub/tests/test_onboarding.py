@@ -95,7 +95,9 @@ class FakeCloudAdapter(BrandAdapter):
             raise AdapterError("Unrecognised callback payload", "invalid_input")
         items: List[Dict[str, Any]] = []
         for event in payload["events"]:
-            if "state" in event:
+            if "raw" in event:
+                items.append(event["raw"])  # pass-through, lets tests feed malformed items to the route
+            elif "state" in event:
                 items.append({"external_id": event["device"], "type": "state", "payload": {"state": event["state"], "online": True}})
             else:
                 items.append({"external_id": event["device"], "type": "event", "payload": {"type": event["event"]}})

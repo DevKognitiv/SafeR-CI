@@ -230,11 +230,13 @@ void main() {
   });
 
   group('reorderedList', () {
-    test('follows the ReorderableList contract (newIndex is the pre-removal slot)', () {
-      expect(reorderedList(['a', 'b', 'c'], 0, 3), ['b', 'c', 'a']); // first -> end
-      expect(reorderedList(['a', 'b', 'c'], 0, 2), ['b', 'a', 'c']); // first -> middle
+    test('follows the onReorderItem contract (newIndex is the post-removal position)', () {
+      expect(reorderedList(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']); // first -> end
+      expect(reorderedList(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c']); // first -> middle
       expect(reorderedList(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']); // last -> first
       expect(reorderedList(['a', 'b', 'c'], 1, 1), ['a', 'b', 'c']); // no-op
+      expect(reorderedList(['a', 'b', 'c'], 0, 9), ['b', 'c', 'a']); // clamped
+      expect(reorderedList(['a', 'b', 'c'], 5, 0), ['a', 'b', 'c']); // bad oldIndex: untouched
       expect(reorderedList(<String>[], 0, 0), isEmpty);
     });
   });

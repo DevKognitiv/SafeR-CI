@@ -175,6 +175,17 @@ def _pair_message(created: int, updated: int) -> str:
     return ", ".join(parts) if parts else NO_DEVICES
 
 
+def _depth(device: Device, rows: List[Device]) -> int:
+    """Nesting depth of ``device`` among ``rows`` (0 = no parent in the set); cycle-safe."""
+    by_id = {row.id: row for row in rows}
+    depth, seen, current = 0, {device.id}, device
+    while current.parent_id in by_id and current.parent_id not in seen:
+        current = by_id[current.parent_id]
+        seen.add(current.id)
+        depth += 1
+    return depth
+
+
 async def _load_integration(integration_id: str, user: User, db: AsyncSession) -> Tuple[Integration, HomeAccess]:
     integration = await db.get(Integration, integration_id)
     if integration is None:
@@ -419,19 +430,9 @@ async def delete_integration(
     access.require("admin")
     service = _device_service()
     rows = (await db.execute(select(Device).where(Device.integration_id == integration.id))).scalars().all()
-    children: Dict[Optional[str], List[Device]] = {}
-    for device in rows:
-        children.setdefault(device.parent_id, []).append(device)
-    removed: Set[str] = set()
-    for device in sorted(rows, key=lambda d: 0 if d.parent_id is None else 1):
-        if device.id in removed:
-            continue
-        # ``DeviceService.remove`` deletes direct children; mark the whole subtree so we never delete twice.
-        stack = [device.id]
-        while stack:
-            current = stack.pop()
-            removed.add(current)
-            stack.extend(child.id for child in children.get(current, []))
+    # Leaves first: ``DeviceService.remove`` also drops direct children, so removing a parent before its
+    # children would delete rows twice (the DB cascade wins and the ORM delete finds nothing).
+    for device in sorted(rows, key=lambda d: -_depth(d, rows)):
         await service.remove(db, device)
     await db.delete(integration)
     await db.commit()
