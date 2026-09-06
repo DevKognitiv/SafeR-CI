@@ -59,6 +59,15 @@ class _NoHomeClient extends FakeHubClient {
   Future<List<Home>> homes() async => [];
 }
 
+/// Pairing takes a while, so the progress view is visible for a frame or two.
+class _SlowPairClient extends FakeHubClient {
+  @override
+  Future<({List<Device> devices, String? integrationId, String message})> pair(String brandId, {required String homeId, required String method, Map<String, dynamic> payload = const {}, String? roomId, List<String>? selectedExternalIds}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return super.pair(brandId, homeId: homeId, method: method, payload: payload, roomId: roomId, selectedExternalIds: selectedExternalIds);
+  }
+}
+
 void main() {
   group('BrandCatalogScreen', () {
     testWidgets('lists the brands of the catalogue and the QR scan card', (tester) async {
@@ -68,8 +77,9 @@ void main() {
       expect(find.text('Marques'), findsOneWidget);
       expect(find.byType(BrandCard), findsNWidgets(FakeHubClient.demoBrands.length));
       for (final brand in FakeHubClient.demoBrands) {
-        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.name)), findsOneWidget);
-        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.vendor)), findsOneWidget);
+        // Name and vendor (both when they coincide, e.g. Hikvision).
+        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.name)), brand.name == brand.vendor ? findsNWidgets(2) : findsOneWidget);
+        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.vendor)), findsWidgets);
       }
       // Protocol chips.
       expect(find.text('tuya_cloud'), findsOneWidget);
@@ -87,9 +97,17 @@ void main() {
       expect(find.byType(CategoryGroupChips), findsNothing);
       expect(find.text('Sécurité'), findsNothing);
 
+      // Categories match on their name; brands also match on their description.
       await tester.enterText(find.byType(TextField), 'caméra');
       await settle(tester);
-      expect(find.byType(CategoryTile), findsOneWidget);
+      expect(find.widgetWithText(CategoryTile, 'Caméra'), findsOneWidget);
+      expect(brandCard('hikvision'), findsOneWidget);
+      expect(brandCard('tuya'), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'zzz');
+      await settle(tester);
+      expect(find.byType(CategoryTile), findsNothing);
+      expect(find.text('Aucune catégorie ne correspond à votre recherche'), findsOneWidget);
       expect(find.byType(BrandCard), findsNothing);
       expect(find.text('Aucune marque trouvée'), findsOneWidget);
 
@@ -250,7 +268,7 @@ void main() {
     });
 
     testWidgets('successful pairing lists the devices and Terminer adds them to the home', (tester) async {
-      final client = FakeHubClient();
+      final client = _SlowPairClient();
       final app = await pumpAddDevice(tester, initialLocation: Routes.pair('hikvision'), client: client);
       await _fillHikvision(tester);
       await _tapButton(tester, 'Continuer');
@@ -260,7 +278,7 @@ void main() {
       await tester.tap(find.text('Salon'));
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Ajouter'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.byType(PairingProgressView), findsOneWidget);
       expect(find.text("Connexion à l'appareil..."), findsOneWidget);
       await settle(tester);
