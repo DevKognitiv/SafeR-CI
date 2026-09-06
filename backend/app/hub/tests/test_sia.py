@@ -85,8 +85,10 @@ def test_encode_frame_layout_and_parse_roundtrip():
     assert parsed.account == "1234" and parsed.data == "#1234|Nri1/BA01" and parsed.timestamp == STAMP
     # receiver/line as hex ints, lower-case hex tolerated, extension fields kept
     other = encode_frame("ADM-CID", "17", 0x1A, 0xF, "abcd", "#ABCD|1130 01 003", "01:02:03,01-31-2026")
-    assert b"R1ALF#ABCD" in other
-    reparsed = parse_frame(other.lower().replace(b"adm-cid", b"ADM-CID").replace(b"r1alf#abcd", b"R1ALF#ABCD"))
+    assert b'"ADM-CID"0017R1ALF#ABCD[#ABCD|1130 01 003]_01:02:03,01-31-2026' in other
+    lower_body = b'"ADM-CID"0017R1aLf#abcd[#ABCD|1130 01 003]_01:02:03,01-31-2026'
+    lower = b"\n" + f"{crc16(lower_body):04x}{len(lower_body):04x}".encode() + lower_body + b"\r"
+    reparsed = parse_frame(lower)
     assert reparsed.crc_ok and reparsed.receiver == "1A" and reparsed.line == "F" and reparsed.account == "ABCD"
     ext = parse_frame(b'\n' + b'0000002F"SIA-DCS"0003R0L0#1234[#1234|NRP0000][X1234]')
     assert ext.extensions == ["X1234"] and ext.timestamp is None
@@ -270,7 +272,7 @@ async def test_handle_line_keepalive_and_unsupported(receiver: SiaReceiver, runt
     assert devices.pushes == [("ajax", "sia:1234", "state", {"state": {}, "online": True})]
     duh = await receiver.handle_line(encode_frame("*SIA-DCS", 13, 0, 0, "1234", "0A1B2C", STAMP))
     assert parse_frame(duh).msg_type == "DUH" and parse_frame(duh).sequence == "0013"
-    weird = await receiver.handle_line(encode_frame("XYZ-FMT", 14, 0, 0, "1234", "[]", STAMP))
+    weird = await receiver.handle_line(encode_frame("XYZ-FMT", 14, 0, 0, "1234", "", STAMP))
     assert parse_frame(weird).msg_type == "DUH"
     assert receiver.stats["duh"] == 2 and len(devices.pushes) == 1
     # No device service: frames are still acknowledged

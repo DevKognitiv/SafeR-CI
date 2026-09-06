@@ -103,6 +103,12 @@ class FakeAjaxCloud:
         if path == f"{prefix}/{HUB_ID}/commands/arming" and request.method == "PUT":
             self.arming.append((HUB_ID, body))
             return httpx.Response(200)
+        if path.startswith(f"{prefix}/{HUB_ID}/groups/") and path.endswith("/commands/arming") and request.method == "PUT":
+            group_id = path.split("/groups/")[1].split("/")[0]
+            if group_id == "missing":
+                return httpx.Response(404, json={"message": "group not found"})
+            self.arming.append((group_id, body))
+            return httpx.Response(200)
         if path.startswith(f"{prefix}/{HUB_ID}/devices/"):
             device_id = path[len(f"{prefix}/{HUB_ID}/devices/"):].split("/")[0]
             device = self.devices.get(device_id)
@@ -335,7 +341,13 @@ async def test_arm_home_uses_groups_in_group_mode(adapter: AjaxAdapter, cloud: F
     assert await adapter.send_command(ref, "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
     paths = [r.url.path for r in cloud.requests if r.method == "PUT"]
     assert paths == [f"/api/user/{USER_ID}/hubs/{HUB_ID}/groups/g1/commands/arming", f"/api/user/{USER_ID}/hubs/{HUB_ID}/groups/g2/commands/arming"]
-    assert cloud.arming == []  # hub-level arming not used
+    assert cloud.arming == [("g1", {"command": "ARM", "ignoreProblems": True}), ("g2", {"command": "ARM", "ignoreProblems": True})]
+    # When the group endpoint is unavailable the whole hub is armed instead (best effort)
+    cloud.groups_status = 404
+    ref.config["groups"] = [{"id": "missing", "name": "?"}]
+    cloud.arming.clear()
+    assert await adapter.send_command(ref, "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
+    assert cloud.arming == [(HUB_ID, {"command": "ARM", "ignoreProblems": True})]
 
 
 async def test_switch_command(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ctx: AdapterContext):
