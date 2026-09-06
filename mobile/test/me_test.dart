@@ -72,7 +72,7 @@ void main() {
 
     testWidgets('Aide & FAQ opens the project page and À propos navigates', (tester) async {
       final app = await pumpMe(tester);
-      await tester.scrollUntilVisible(find.text('Aide & FAQ'), 200, scrollable: find.byType(Scrollable).first);
+      await scrollTo(tester, find.text('Aide & FAQ'));
       await tester.tap(find.text('Aide & FAQ'));
       await settle(tester);
       expect(app.links.map((u) => u.toString()), [kSafeRRepoUrl]);
@@ -83,7 +83,7 @@ void main() {
 
     testWidgets('logout asks for confirmation then signs out', (tester) async {
       final app = await pumpMe(tester);
-      await tester.scrollUntilVisible(find.byKey(const Key('me-logout')), 200, scrollable: find.byType(Scrollable).first);
+      await scrollTo(tester, find.byKey(const Key('me-logout')));
       await tester.tap(find.byKey(const Key('me-logout')));
       await settle(tester);
       expect(find.text('Se déconnecter ?'), findsOneWidget);
@@ -91,6 +91,7 @@ void main() {
       await settle(tester);
       expect(app.container.read(authProvider).isAuthenticated, isTrue);
 
+      await scrollTo(tester, find.byKey(const Key('me-logout')));
       await tester.tap(find.byKey(const Key('me-logout')));
       await settle(tester);
       await tester.tap(find.widgetWithText(FilledButton, 'Se déconnecter'));
