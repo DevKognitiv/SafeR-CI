@@ -322,11 +322,11 @@ def parse_manual_code(code: str) -> Dict[str, Any]:
 def encode_manual_code(
     discriminator: int, passcode: int, vendor_id: Optional[int] = None, product_id: Optional[int] = None
 ) -> str:
-    """Build a manual pairing code. ``discriminator`` may be the full 12-bit or the short 4-bit value."""
+    """Build a manual pairing code from the full 12-bit ``discriminator`` (only its 4 upper bits are encoded)."""
     check_passcode(passcode)
     if not 0 <= discriminator <= MAX_DISCRIMINATOR:
         raise PayloadError("Discriminator out of range")
-    short = discriminator >> 8 if discriminator > 0xF else discriminator
+    short = discriminator >> 8
     with_vid_pid = vendor_id is not None and product_id is not None
     digit1 = (int(with_vid_pid) << 2) | (short >> 2)
     chunk2 = ((short & 0x3) << 14) | (passcode & 0x3FFF)
