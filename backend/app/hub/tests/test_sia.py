@@ -327,3 +327,32 @@ async def test_port_defaults_from_settings():
     assert SiaReceiver(FakeRuntime(HUB_SIA_PORT=9500)).port == 9500
     assert SiaReceiver(FakeRuntime(HUB_SIA_PORT=9500), port=0).port == 0
     assert sia.DEFAULT_BRAND == "ajax" and SiaReceiver.external_id("ab12") == "sia:AB12"
+
+
+# ----------------------------------------------------------------------------- end to end (real DeviceService)
+async def test_receiver_updates_paired_panel_through_device_service(client, auth, home):
+    from app.hub.runtime import get_runtime  # pylint: disable=import-outside-toplevel
+    from app.hub.tests.conftest import PREFIX  # pylint: disable=import-outside-toplevel
+
+    response = await client.post(
+        f"{PREFIX}/onboarding/ajax/pair",
+        json={"home_id": home["id"], "method": "sia_receiver", "payload": {"account": "1234", "name": "Centrale"}},
+        headers=auth["headers"],
+    )
+    assert response.status_code == 201, response.text
+    device = response.json()["devices"][0]
+    assert device["external_id"] == "sia:1234" and device["state"]["arm_mode"] == "disarmed"
+
+    receiver = SiaReceiver(get_runtime(), port=0)
+    for seq, data in ((1, "#1234|Nri1/id4/CL04"), (2, "#1234|Nri1/BA02^Cuisine^"), (3, "#1234|Nri1/RP0000")):
+        assert parse_frame(await receiver.handle_line(encode_frame("SIA-DCS", seq, 0, 0, "1234", data, STAMP))).msg_type == "ACK"
+    assert parse_frame(await receiver.handle_line(encode_frame("ADM-CID", 4, 0, 0, "1234", "#1234|1401 01 004", STAMP))).msg_type == "ACK"
+
+    response = await client.get(f"{PREFIX}/devices/{device['id']}", headers=auth["headers"])
+    assert response.status_code == 200, response.text
+    state = response.json()["state"]
+    assert state["arm_mode"] == "disarmed" and state["alarm"] is False and state["triggered_zone"] == "Cuisine"
+    response = await client.get(f"{PREFIX}/devices/{device['id']}/events?limit=50", headers=auth["headers"])
+    assert response.status_code == 200, response.text
+    types = [e["type"] for e in response.json()]
+    assert "alarm" in types and "burglary" in types and "arm_mode" in types
