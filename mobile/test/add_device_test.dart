@@ -356,6 +356,7 @@ void main() {
       await settle(tester);
       expect(app.router.state.uri.path, Routes.pair('matter'));
       expect(app.router.state.uri.queryParameters['method'], 'qr_code');
+      await tester.pump(const Duration(seconds: 1)); // exit transition of the replaced scanner page
       expect(find.byType(QrScanScreen), findsNothing);
       expect(find.byType(PairingWizardScreen), findsOneWidget);
       expect(find.text('Scanner le code QR Matter'), findsOneWidget);
