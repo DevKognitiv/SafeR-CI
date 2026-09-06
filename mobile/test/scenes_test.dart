@@ -206,14 +206,14 @@ void main() {
       await settle(tester);
       // Drag the first row's handle below the second row.
       final rowHeight = tester.getSize(find.byType(ActionTile).first).height;
-      final scrollable = find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first;
       final dragged = find.textContaining('Lampe salon éteindre');
-      debugPrint('DEBUG before: handle=${tester.getCenter(handle)} row=$rowHeight text=${tester.getTopLeft(dragged)} scroll=${tester.state<ScrollableState>(scrollable).position.pixels}');
+      final before = tester.getTopLeft(dragged);
       final gesture = await tester.startGesture(tester.getCenter(handle));
       await tester.pump(const Duration(milliseconds: 100));
       await gesture.moveBy(Offset(0, rowHeight * 0.6));
       await tester.pump(const Duration(milliseconds: 100));
-      debugPrint('DEBUG after move: text=${tester.getTopLeft(dragged)} scroll=${tester.state<ScrollableState>(scrollable).position.pixels} tiles=${find.byType(ActionTile).evaluate().length}');
+      // The drag proxy follows the pointer (i.e. the handle won over the scroll view).
+      expect(tester.getTopLeft(dragged).dy, greaterThan(before.dy + rowHeight * 0.5));
       await gesture.moveBy(Offset(0, rowHeight * 0.6));
       await tester.pump(const Duration(milliseconds: 100));
       await gesture.moveBy(Offset(0, rowHeight * 0.3));

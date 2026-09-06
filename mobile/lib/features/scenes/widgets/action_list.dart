@@ -4,15 +4,15 @@ import '../../../core/i18n.dart';
 import '../../../core/models/models.dart';
 import 'labels.dart';
 
-/// Apply a drag reorder to [items] (new list). Follows the Flutter contract of
-/// `ReorderableList.onReorder`: [newIndex] is the drop slot *before* the item
-/// is removed, so it is decremented when the item moves down the list.
+/// Apply a drag reorder to [items] (returns a new list). Follows the contract of
+/// `SliverReorderableList.onReorderItem`: [newIndex] is the final position of the
+/// item once it has been removed from [oldIndex] (already adjusted by Flutter —
+/// unlike the deprecated `onReorder`, no `newIndex -= 1` is needed).
 List<T> reorderedList<T>(List<T> items, int oldIndex, int newIndex) {
   final list = List.of(items);
   if (oldIndex < 0 || oldIndex >= list.length) return list;
-  final target = (oldIndex < newIndex ? newIndex - 1 : newIndex).clamp(0, list.length - 1);
   final item = list.removeAt(oldIndex);
-  list.insert(target, item);
+  list.insert(newIndex.clamp(0, list.length), item);
   return list;
 }
 
