@@ -19,7 +19,9 @@ class IntegrationTile extends StatelessWidget {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final color = colorFromHex(brand?.color);
-    final created = timeAgo(context, integration.createdAt);
+    final ago = timeAgo(context, integration.createdAt);
+    // "Il y a 3 j" -> "il y a 3 j" so it reads naturally after "Ajoutée".
+    final created = ago.isEmpty ? '' : ago[0].toLowerCase() + ago.substring(1);
     final brandName = brand?.name ?? integration.brand;
     return Card(
       key: ValueKey('integration-${integration.id}'),
@@ -39,10 +41,7 @@ class IntegrationTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(integration.key, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: muted, fontFamily: 'monospace')),
                   if (created.isNotEmpty)
-                    Text(
-                      context.tr(fr: 'Ajoutée $created', en: 'Added $created').replaceFirst('Ajoutée Il y a', 'Ajoutée il y a'),
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
+                    Text(context.tr(fr: 'Ajoutée $created', en: 'Added $created'), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
                 ],
               ),
             ),

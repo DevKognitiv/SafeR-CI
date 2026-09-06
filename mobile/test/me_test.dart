@@ -239,8 +239,7 @@ void main() {
       await tester.tap(find.byKey(const Key('members-add')));
       await settle(tester);
       await tester.enterText(find.byKey(const Key('member-email')), 'carla@safer.ci');
-      await tester.tap(find.widgetWithText(ButtonSegment<String>, 'Administrateur').hitTestable().first, warnIfMissed: false);
-      await tester.tap(find.text('Administrateur').last);
+      await tester.tap(find.text('Administrateur'));
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Ajouter'));
       await settle(tester);
@@ -431,12 +430,13 @@ void main() {
       expect(find.text('Tuya / Smart Life'), findsOneWidget);
       expect(find.text('Hikvision'), findsOneWidget);
       expect(find.text('Matter'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Licences open source'), 200, scrollable: find.byType(Scrollable).first);
-      expect(find.text('Licences open source'), findsOneWidget);
-      expect(find.textContaining('SafeR CI'), findsWidgets);
+      await tester.scrollUntilVisible(find.text('Code source'), 200, scrollable: find.byType(Scrollable).first);
       await tester.tap(find.text('Code source'));
       await settle(tester);
       expect(app.links.map((u) => u.toString()), [kSafeRRepoUrl]);
+      await tester.scrollUntilVisible(find.text('Licences open source'), 200, scrollable: find.byType(Scrollable).first);
+      expect(find.text('Licences open source'), findsOneWidget);
+      expect(find.textContaining('SafeR CI'), findsWidgets);
     });
   });
 

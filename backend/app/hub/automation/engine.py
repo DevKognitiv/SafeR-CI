@@ -158,11 +158,11 @@ def in_time_range(start: Any, end: Any, moment: datetime) -> bool:
     return now_min >= start_min or now_min < end_min
 
 
-def _weekdays(value: Any) -> Optional[Set[int]]:
-    """Normalise a ``days`` list (ints or numeric strings, Monday = 0) — None/empty means every day."""
-    if not value:
-        return None
+def _weekdays(value: Any) -> Set[int]:
+    """Normalise a ``days`` list (ints or numeric strings, Monday = 0); an empty result means every day."""
     days: Set[int] = set()
+    if not value:
+        return days
     for item in value if isinstance(value, (list, tuple, set)) else [value]:
         try:
             day = int(item)
@@ -170,7 +170,7 @@ def _weekdays(value: Any) -> Optional[Set[int]]:
             continue
         if 0 <= day <= 6:
             days.add(day)
-    return days or None
+    return days
 
 
 # ----------------------------------------------------------------------------- shared run helper
@@ -430,7 +430,7 @@ class AutomationEngine:
             if at is None or at != (moment.hour, moment.minute):
                 return False
             days = _weekdays(trigger.get("days"))
-            if days is not None and moment.weekday() not in days:
+            if days and moment.weekday() not in days:
                 return False
             slot = moment.strftime("%Y-%m-%d %H:%M")
             if self._schedule_slots.get(automation.id) == slot:
