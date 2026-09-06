@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import httpx
@@ -157,6 +158,18 @@ def _md5(text: str) -> str:
 Handler = Union[httpx.Response, Callable[[httpx.Request], httpx.Response]]
 
 
+@dataclass
+class Seen:
+    """Snapshot of one request as the device saw it (httpx re-uses/mutates the Request object across auth retries)."""
+
+    method: str
+    path: str
+    params: Dict[str, str]
+    headers: Dict[str, str]
+    content: bytes
+    authorized: bool
+
+
 class FakeIsapi:
     """In-memory ISAPI device: verifies HTTP Digest (or Basic) auth like a real Hikvision unit."""
 
@@ -166,14 +179,18 @@ class FakeIsapi:
         self.password = password
         self.realm = realm
         self.nonce = "5f3e9c1b2a7d4e6f"
-        self.requests: List[httpx.Request] = []
+        self.requests: List[Seen] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        if not self.authorized(request):
+        authorized = self.authorized(request)
+        self.requests.append(Seen(
+            method=request.method, path=request.url.path, params=dict(request.url.params),
+            headers={k.lower(): v for k, v in request.headers.items()}, content=bytes(request.content), authorized=authorized,
+        ))
+        if not authorized:
             challenge = (
                 f'Digest realm="{self.realm}", qop="auth", nonce="{self.nonce}", opaque="8b1a9953", algorithm="MD5"'
                 if self.auth == "digest" else f'Basic realm="{self.realm}"'
@@ -199,8 +216,9 @@ class FakeIsapi:
             expected = _md5(f"{ha1}:{params.get('nonce')}:{ha2}")
         return params.get("username") == USER and params.get("uri") == request.url.raw_path.decode() and params.get("response") == expected
 
-    def sent(self, method: str, path: str) -> List[httpx.Request]:
-        return [r for r in self.requests if r.method == method and r.url.path == path and "Authorization" in r.headers]
+    def sent(self, method: str, path: str) -> List[Seen]:
+        """Authenticated requests that reached ``path``."""
+        return [r for r in self.requests if r.method == method and r.path == path and r.authorized]
 
 
 def camera_routes(ptz: bool = True) -> Dict[Tuple[str, str], Handler]:
@@ -360,9 +378,10 @@ async def test_pair_ip_camera_with_digest(adapter: HikvisionAdapter):
     assert cam.state["stream_sub"] == f"rtsp://192.168.1.64:554/Streaming/Channels/102"
     assert cam.state["snapshot"] == "http://192.168.1.64:80/ISAPI/Streaming/channels/101/picture"
     assert PASSWORD not in json.dumps(cam.state)
-    # First request was challenged, the retry carried a valid Digest header
+    # First request was challenged, the retry carried a valid Digest header (verified by FakeIsapi)
     first, second = server.requests[0], server.requests[1]
-    assert "Authorization" not in first.headers and second.headers["Authorization"].startswith("Digest ")
+    assert not first.authorized and "authorization" not in first.headers
+    assert second.authorized and second.headers["authorization"].startswith("Digest ")
     assert result.message
 
 
@@ -410,7 +429,7 @@ async def test_pair_ax_pro_panel_and_zones(adapter: HikvisionAdapter):
     assert zone2.external_id == f"{PANEL_SERIAL}:zone2" and zone2.name == "PIR salon"
     assert zone2.state == {"open": True, "alarm": False, "bypass": True, "tamper": True, "battery": 62, "signal": 50}
     assert zone2.credentials == {}
-    assert server.sent("GET", "/ISAPI/SecurityCP/status/subSystems")[0].url.params["format"] == "json"
+    assert server.sent("GET", "/ISAPI/SecurityCP/status/subSystems")[0].params["format"] == "json"
 
 
 @pytest.mark.parametrize("arming,expected", [("away", "armed_away"), ("stay", "armed_home"), ("disarm", "disarmed")])
@@ -440,7 +459,8 @@ async def test_pair_auth_failed(adapter: HikvisionAdapter):
         await adapter.pair(METHOD_IP, payload(), ctx_for(server))
     assert exc.value.code == "auth_failed"
     # digest challenge answered once, then rejected: never falls back to Basic when a Digest challenge exists
-    assert all(not r.headers.get("Authorization", "").startswith("Basic") for r in server.requests)
+    assert all(not r.headers.get("authorization", "").startswith("Basic") for r in server.requests)
+    assert any(r.headers.get("authorization", "").startswith("Digest ") for r in server.requests)
 
 
 async def test_pair_unreachable(adapter: HikvisionAdapter):
@@ -474,7 +494,7 @@ async def test_basic_auth_fallback(adapter: HikvisionAdapter):
     server = FakeIsapi(camera_routes(), auth="basic")
     result = await adapter.pair(METHOD_IP, payload(), ctx_for(server))
     assert result.devices[0].external_id == CAM_SERIAL
-    auth_headers = [r.headers.get("Authorization", "") for r in server.requests]
+    auth_headers = [r.headers.get("authorization", "") for r in server.requests]
     assert auth_headers[0] == "" and auth_headers[1].startswith("Basic ")
     assert all(h.startswith("Basic ") for h in auth_headers[1:])  # sticks to Basic for the rest of the session
 
@@ -569,14 +589,14 @@ async def test_arm_disarm_bypass_and_clear_commands(adapter: HikvisionAdapter):
     assert await adapter.send_command(panel_ref(), "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
     assert await adapter.send_command(panel_ref(), "arm_mode", "armed_night", ctx) == {"arm_mode": "armed_night"}
     arms = server.sent("PUT", "/ISAPI/SecurityCP/control/arm/1")
-    assert [r.url.params["ways"] for r in arms] == ["away", "stay", "stay"]
+    assert [r.params["ways"] for r in arms] == ["away", "stay", "stay"]
     result = await adapter.send_command(panel_ref(), "arm_mode", "disarmed", ctx)
     assert result["arm_mode"] == "disarmed" and result["alarm"] is False
     assert len(server.sent("PUT", "/ISAPI/SecurityCP/control/disarm/1")) == 1
     assert await adapter.send_command(zone_ref(2), "bypass", True, ctx) == {"bypass": True}
     bypass = server.sent("PUT", "/ISAPI/SecurityCP/control/bypass/2")[0]
     assert json.loads(bypass.content) == {"BypassCtrl": {"bypass": True}}
-    assert bypass.url.params["format"] == "json" and bypass.headers["content-type"] == "application/json"
+    assert bypass.params["format"] == "json" and bypass.headers["content-type"] == "application/json"
     assert (await adapter.send_command(panel_ref(), "alarm", False, ctx))["alarm"] is False
     assert len(server.sent("PUT", "/ISAPI/SecurityCP/control/clearAlarm/1")) == 1
     with pytest.raises(AdapterError) as exc:
@@ -728,7 +748,7 @@ async def test_subscribe_streams_over_http_and_unsubscribe_cancels(adapter: Hikv
         (CAM_SERIAL, {"state": {"motion": False}, "online": True}),
     ]
     stream_requests = server.sent("GET", "/ISAPI/Event/notification/alertStream")
-    assert len(stream_requests) == 1 and stream_requests[0].headers["Authorization"].startswith("Digest ")
+    assert len(stream_requests) == 1 and stream_requests[0].headers["authorization"].startswith("Digest ")
     await unsubscribe()
     await asyncio.sleep(0.05)
     assert len(server.sent("GET", "/ISAPI/Event/notification/alertStream")) == 1  # no reconnect after unsubscribe
@@ -743,7 +763,8 @@ async def test_subscribe_marks_host_offline_after_repeated_failures(monkeypatch:
         del session, ctx
         attempts += 1
         raise AdapterError("boom", "unreachable")
-        yield b""  # pylint: disable=unreachable  (makes this an async generator)
+        # The unreachable yield makes this an async generator like the real stream opener.
+        yield b""  # pylint: disable=unreachable
 
     monkeypatch.setattr("app.hub.adapters.hikvision.RECONNECT_MIN_DELAY", 0.001)
     monkeypatch.setattr("app.hub.adapters.hikvision.RECONNECT_MAX_DELAY", 0.001)
