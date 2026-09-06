@@ -25,6 +25,9 @@ class SosScreen extends ConsumerStatefulWidget {
 }
 
 class _SosScreenState extends ConsumerState<SosScreen> {
+  /// The SOS screen is always dark, whatever the app theme.
+  static final ThemeData _darkTheme = SafeRTheme.darkTheme;
+
   _SosPhase _phase = _SosPhase.idle;
   String? _error;
   String? _resolvingId;
@@ -93,7 +96,7 @@ class _SosScreenState extends ConsumerState<SosScreen> {
   Widget build(BuildContext context) {
     final home = ref.watch(currentHomeProvider);
     return Theme(
-      data: SafeRTheme.darkTheme,
+      data: _darkTheme,
       child: Builder(builder: (context) => home == null ? _noHome(context) : _body(context, home)),
     );
   }
