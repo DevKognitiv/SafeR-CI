@@ -66,9 +66,36 @@ class _PairingWizardScreenState extends ConsumerState<PairingWizardScreen> {
 
   bool get _hasMethodChooser => (_brand?.methods.length ?? 0) > 1 && widget.method == null;
 
+  @override
+  void didUpdateWidget(covariant PairingWizardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // go_router reuses this State when only the route parameters change
+    // (/add-device/hikvision -> /add-device/matter): start the wizard over.
+    if (oldWidget.brandId != widget.brandId || oldWidget.method != widget.method) {
+      setState(_reset);
+    }
+  }
+
+  void _reset() {
+    _initialised = false;
+    _brand = null;
+    _method = null;
+    _values = {};
+    _formGeneration++;
+    _discovered = null;
+    _selected = {};
+    _discovering = false;
+    _discoveryError = null;
+    _roomId = null;
+    _paired = const [];
+    _pairMessage = '';
+    _pairError = null;
+    _step = PairingStep.form;
+  }
+
   // ------------------------------------------------------------------ setup
   void _initialise(BrandInfo brand) {
-    if (_initialised) return;
+    if (_initialised && _brand?.id == brand.id) return;
     _initialised = true;
     _brand = brand;
     final requested = widget.method == null ? null : brand.method(widget.method!);

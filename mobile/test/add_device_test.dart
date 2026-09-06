@@ -159,6 +159,19 @@ void main() {
       expect(find.byType(QrScanScreen), findsOneWidget);
     });
 
+    testWidgets('navigating to another brand route restarts the wizard (go_router reuses the screen state)', (tester) async {
+      final app = await pumpAddDevice(tester, size: const Size(400, 1500), initialLocation: Routes.pair('hikvision'));
+      expect(find.text('Adresse IP + identifiants'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'Utilisateur'), findsOneWidget);
+
+      app.router.go(Routes.pair('matter'));
+      await settle(tester);
+      expect(app.router.state.uri.path, Routes.pair('matter'));
+      expect(find.text('Scanner le code QR Matter'), findsOneWidget);
+      expect(find.text('Adresse IP + identifiants'), findsNothing);
+      expect(find.widgetWithText(TextFormField, 'Utilisateur'), findsNothing);
+    });
+
     testWidgets('shows error views with retry when the catalogue is unavailable', (tester) async {
       await pumpAddDevice(tester, client: _NoCatalogueClient(), size: const Size(400, 1500));
       expect(find.byType(ErrorView), findsNWidgets(2));
