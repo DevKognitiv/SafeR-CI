@@ -15,7 +15,7 @@ class MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final home = ref.watch(currentHomeProvider);
-    final unread = home == null ? null : ref.watch(unreadCountProvider(home.id)).value;
+    final unread = home == null ? null : ref.watch(unreadCountProvider(home.id)).valueOrNull;
     final alarm = home?.alarmActive ?? false;
     return Scaffold(
       body: navigationShell,

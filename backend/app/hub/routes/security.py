@@ -93,7 +93,7 @@ async def create_sos(
     db: AsyncSession = Depends(get_db),
     runtime: HubRuntime = Depends(runtime_dep),
 ) -> SosOut:
-    """Raise an SOS: alarm message, ``sos.raised`` event, home alarm and forwarding to SafeR CI when configured."""
+    """Raise an SOS: alarm message, ``sos.raised`` event, home alarm; forwarding to SafeR CI is queued in the background."""
     alert = await raise_sos(runtime, db, access.home, access.user, body)
     return SosOut.model_validate(alert)
 

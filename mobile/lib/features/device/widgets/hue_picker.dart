@@ -14,12 +14,15 @@ Color colorFromHsv(Map<String, dynamic>? hsv, {Color fallback = Colors.white}) {
 
 /// Hue gradient slider + saturation slider with a live preview swatch.
 class HueSaturationPicker extends StatelessWidget {
-  const HueSaturationPicker({super.key, required this.hue, required this.saturation, required this.value, required this.onChanged});
+  const HueSaturationPicker({super.key, required this.hue, required this.saturation, required this.value, required this.onChanged, this.enabled = true});
 
   final int hue;
   final int saturation;
   final int value;
   final void Function(int hue, int saturation) onChanged;
+
+  /// False disables both sliders (offline device).
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +59,7 @@ class HueSaturationPicker extends StatelessWidget {
           divisions: 360,
           unit: '°',
           gradient: kHueGradient,
+          enabled: enabled,
           onCommit: (v) => onChanged(v.round(), saturation),
         ),
         CapabilitySlider(
@@ -68,6 +72,7 @@ class HueSaturationPicker extends StatelessWidget {
           divisions: 100,
           unit: '%',
           gradient: LinearGradient(colors: [Colors.white, pure]),
+          enabled: enabled,
           onCommit: (v) => onChanged(hue, v.round()),
         ),
       ],

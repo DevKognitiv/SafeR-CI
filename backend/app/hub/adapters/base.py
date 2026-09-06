@@ -141,6 +141,7 @@ class DeviceRef:
     capabilities: List[Dict[str, Any]] = field(default_factory=list)
     name: str = ""
     integration_id: Optional[str] = None
+    home_id: Optional[str] = None
 
     def cfg(self, key: str, default: Any = None) -> Any:
         """Config lookup: device config first, then integration config."""

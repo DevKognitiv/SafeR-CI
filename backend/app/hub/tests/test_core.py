@@ -1,5 +1,6 @@
 """Core hub tests: settings, security helpers, capability coercion, event bus, demo adapter, health."""
 import pytest
+from pydantic import ValidationError
 
 from app.hub.adapters.base import AdapterContext, DeviceRef
 from app.hub.adapters.registry import registry
@@ -24,7 +25,7 @@ def test_jwt_roundtrip():
 
 
 def test_vault_roundtrip():
-    vault = CredentialVault(HubSettings(SECRET_KEY="abc").encryption_key)
+    vault = CredentialVault(HubSettings(SECRET_KEY="abc-not-a-placeholder").encryption_key)
     blob = vault.encrypt({"password": "p@ss", "n": 1})
     assert blob and "p@ss" not in blob
     assert vault.decrypt(blob) == {"password": "p@ss", "n": 1}
@@ -34,10 +35,22 @@ def test_vault_roundtrip():
 
 
 def test_settings_defaults_and_sia_accounts():
-    settings = HubSettings(SECRET_KEY="x", HUB_SIA_ACCOUNTS="1234:home-a, abcd:home-b")
+    settings = HubSettings(SECRET_KEY="x-unit-test-key", HUB_SIA_ACCOUNTS="1234:home-a, abcd:home-b")
     assert settings.database_url.startswith("sqlite+aiosqlite")
     assert settings.sia_accounts == {"1234": "home-a", "ABCD": "home-b"}
-    assert HubSettings(SECRET_KEY="x", DATABASE_URL="postgresql+asyncpg://u:p@h/db").database_url.startswith("postgresql")
+    assert HubSettings(SECRET_KEY="x-unit-test-key", DATABASE_URL="postgresql+asyncpg://u:p@h/db").database_url.startswith("postgresql")
+
+
+def test_secret_key_is_required_and_placeholders_are_refused(monkeypatch):
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    with pytest.raises(ValidationError):
+        HubSettings(_env_file=None)
+    for placeholder in ("change-me", "change-me-safer-hub-dev-secret", "dev", "Secret", "short", ""):
+        with pytest.raises(ValidationError):
+            HubSettings(SECRET_KEY=placeholder, _env_file=None)
+    assert HubSettings(SECRET_KEY="  a-real-random-key-value  ", _env_file=None).SECRET_KEY == "a-real-random-key-value"
+    monkeypatch.setenv("SECRET_KEY", "from-the-environment")
+    assert HubSettings(_env_file=None).SECRET_KEY == "from-the-environment"
 
 
 def test_coerce_value():

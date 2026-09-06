@@ -38,10 +38,13 @@ class HubClient {
   }
 
   /// WebSocket URL for realtime events.
+  ///
+  /// Built from the same `base + apiPrefix` string as the REST calls so a hub
+  /// served under a path prefix (`https://example.com/safer`) keeps it.
   String wsUrl(String homeId, String token) {
-    final uri = Uri.parse(_baseUrl);
+    final uri = Uri.parse('$_baseUrl${AppConfig.apiPrefix}/ws');
     final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    return uri.replace(scheme: scheme, path: '${AppConfig.apiPrefix}/ws', queryParameters: {'home_id': homeId, 'token': token}).toString();
+    return uri.replace(scheme: scheme, queryParameters: {'home_id': homeId, 'token': token}).toString();
   }
 
   // ------------------------------------------------------------------ core

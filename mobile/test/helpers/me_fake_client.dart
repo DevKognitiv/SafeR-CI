@@ -7,13 +7,19 @@ import 'fake_hub_client.dart';
 /// (the shared fake has no home update/delete, member role update nor
 /// integration removal).
 class MeFakeHubClient extends FakeHubClient {
-  MeFakeHubClient({this.noHomes = false, this.role = 'owner'});
+  MeFakeHubClient({this.noHomes = false, this.role = 'owner', this.extraMembers = const []});
 
   /// When true, the user has no home at all.
   final bool noHomes;
 
-  /// Role of the signed-in user in the demo home.
+  /// Role of the signed-in user in the demo home (also applied to the user's row in the members list).
   final String role;
+
+  /// Members appended to the demo list (e.g. another admin).
+  final List<Member> extraMembers;
+
+  /// User ids passed to DELETE /homes/{id}/members/{userId}.
+  final List<String> removedMembers = [];
 
   late List<Home> homes_ = noHomes ? <Home>[] : [_withRole(demoHome)];
   final List<Integration> integrations_ = [
@@ -91,6 +97,22 @@ class MeFakeHubClient extends FakeHubClient {
     _guard();
     deletedHomes.add(homeId);
     homes_ = homes_.where((h) => h.id != homeId).toList();
+  }
+
+  @override
+  Future<List<Member>> members(String homeId) async {
+    final base = await super.members(homeId);
+    return [
+      for (final m in base)
+        m.userId == FakeHubClient.userId ? Member(userId: m.userId, email: m.email, name: m.name, role: role, joinedAt: m.joinedAt) : m,
+      ...extraMembers,
+    ];
+  }
+
+  @override
+  Future<void> removeMember(String homeId, String userId) {
+    removedMembers.add(userId);
+    return super.removeMember(homeId, userId);
   }
 
   @override

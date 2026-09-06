@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count
 
+from app.hub import events as ev
 from app.hub.deps import ROLE_RANK, HomeAccess, get_current_user, get_db, home_access, load_home_access
 from app.hub.models import (
     Automation, Device, DeviceEvent, Home, HomeMember, Integration, Message, Room, Scene, SosAlert, User,
@@ -239,6 +240,8 @@ async def delete_home(access: HomeAccess = Depends(home_access), db: AsyncSessio
         await db.execute(delete(model).where(model.home_id == home_id))
     await db.execute(delete(Home).where(Home.id == home_id))
     await db.commit()
+    # Every open WebSocket stops receiving this home (user_id None = everyone).
+    await get_runtime().bus.publish(ev.HubEvent(ev.MEMBER_REMOVED, home_id=home_id, payload={"user_id": None}))
     logger.info("Home %s deleted by %s", home_id, access.user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -381,6 +384,8 @@ async def remove_member(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the owner can remove an admin")
     await db.delete(member)
     await db.commit()
+    # Revoke the realtime feed before the "member removed" notice so the removed user never receives it.
+    await get_runtime().bus.publish(ev.HubEvent(ev.MEMBER_REMOVED, home_id=access.home.id, payload={"user_id": target.id}))
     name = _display_name(target)
     if self_leave:
         await _notify_home(db, access.home, f"Membre parti: {name}", f"{name} a quitté {access.home.name}.")

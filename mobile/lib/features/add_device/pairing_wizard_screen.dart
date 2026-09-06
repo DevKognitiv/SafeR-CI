@@ -9,6 +9,7 @@ import '../../core/routes.dart';
 import '../../core/widgets/widgets.dart';
 import 'matter_payload.dart';
 import 'qr_scan_screen.dart';
+import 'widgets/admin_only_view.dart';
 import 'widgets/brand_color.dart';
 import 'widgets/discovery_list.dart';
 import 'widgets/matter_summary_card.dart';
@@ -315,6 +316,11 @@ class _PairingWizardScreenState extends ConsumerState<PairingWizardScreen> {
                 onAction: () => context.go(Routes.homes),
               ),
       );
+    }
+
+    // POST /onboarding/{brand}/pair requires admin/owner: stop before credentials and discovery.
+    if (!home.canManage) {
+      return Scaffold(appBar: AppBar(title: Text(title)), body: const AdminOnlyView());
     }
 
     return brandAsync.when(

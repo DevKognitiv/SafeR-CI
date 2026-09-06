@@ -47,15 +47,18 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     final homes = ref.watch(homesProvider);
     final home = ref.watch(currentHomeProvider);
+    // Create/edit/delete/enable are admin-only on the hub; members can only run/test.
+    final canManage = home?.canManage ?? false;
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr(fr: 'Scènes', en: 'Scenes')),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: context.tr(fr: 'Créer', en: 'Create'),
-            onPressed: home == null ? null : _create,
-          ),
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: context.tr(fr: 'Créer', en: 'Create'),
+              onPressed: _create,
+            ),
         ],
         bottom: TabBar(
           controller: _tabs,
@@ -70,8 +73,8 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabs,
               children: [
-                _TapToRunTab(homeId: home.id),
-                _AutomationsTab(homeId: home.id),
+                _TapToRunTab(homeId: home.id, canManage: canManage),
+                _AutomationsTab(homeId: home.id, canManage: canManage),
               ],
             ),
     );
@@ -80,9 +83,10 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> with SingleTickerPr
 
 // ---------------------------------------------------------------- tap-to-run
 class _TapToRunTab extends ConsumerStatefulWidget {
-  const _TapToRunTab({required this.homeId});
+  const _TapToRunTab({required this.homeId, required this.canManage});
 
   final String homeId;
+  final bool canManage;
 
   @override
   ConsumerState<_TapToRunTab> createState() => _TapToRunTabState();
@@ -136,9 +140,11 @@ class _TapToRunTabState extends ConsumerState<_TapToRunTab> {
           return EmptyState(
             icon: Icons.auto_awesome_outlined,
             title: context.tr(fr: 'Aucune scène', en: 'No scenes yet'),
-            subtitle: context.tr(fr: 'Regroupez plusieurs actions et lancez-les en un tap.', en: 'Group several actions and run them with one tap.'),
-            actionLabel: context.tr(fr: 'Créer une scène', en: 'Create a scene'),
-            onAction: () => context.push(Routes.sceneNew),
+            subtitle: widget.canManage
+                ? context.tr(fr: 'Regroupez plusieurs actions et lancez-les en un tap.', en: 'Group several actions and run them with one tap.')
+                : context.tr(fr: 'Seuls les administrateurs peuvent créer des scènes.', en: 'Only administrators can create scenes.'),
+            actionLabel: widget.canManage ? context.tr(fr: 'Créer une scène', en: 'Create a scene') : null,
+            onAction: widget.canManage ? () => context.push(Routes.sceneNew) : null,
           );
         }
         return RefreshIndicator(
@@ -154,7 +160,7 @@ class _TapToRunTabState extends ConsumerState<_TapToRunTab> {
                 scene: scene,
                 running: _running.contains(scene.id),
                 onTap: () => _run(scene),
-                onLongPress: () => _menu(scene),
+                onLongPress: widget.canManage ? () => _menu(scene) : null,
               );
             },
           ),
@@ -166,9 +172,10 @@ class _TapToRunTabState extends ConsumerState<_TapToRunTab> {
 
 // ---------------------------------------------------------------- automations
 class _AutomationsTab extends ConsumerStatefulWidget {
-  const _AutomationsTab({required this.homeId});
+  const _AutomationsTab({required this.homeId, required this.canManage});
 
   final String homeId;
+  final bool canManage;
 
   @override
   ConsumerState<_AutomationsTab> createState() => _AutomationsTabState();
@@ -228,8 +235,8 @@ class _AutomationsTabState extends ConsumerState<_AutomationsTab> {
   @override
   Widget build(BuildContext context) {
     final automationsAsync = ref.watch(automationsProvider(widget.homeId));
-    final devices = ref.watch(devicesProvider(widget.homeId)).value ?? const <Device>[];
-    final scenes = ref.watch(scenesProvider(widget.homeId)).value ?? const <Scene>[];
+    final devices = ref.watch(devicesProvider(widget.homeId)).valueOrNull ?? const <Device>[];
+    final scenes = ref.watch(scenesProvider(widget.homeId)).valueOrNull ?? const <Scene>[];
     return automationsAsync.when(
       loading: () => const LoadingView(),
       error: (error, _) => ErrorView(error: error, onRetry: _notifier.refresh),
@@ -239,9 +246,11 @@ class _AutomationsTabState extends ConsumerState<_AutomationsTab> {
           return EmptyState(
             icon: Icons.bolt_outlined,
             title: context.tr(fr: 'Aucune automatisation', en: 'No automations yet'),
-            subtitle: context.tr(fr: 'Laissez la maison réagir seule : « Si mouvement, alors allumer ».', en: 'Let the home react on its own: “If motion, then turn on”.'),
-            actionLabel: context.tr(fr: 'Créer une automatisation', en: 'Create an automation'),
-            onAction: () => context.push(Routes.automationNew),
+            subtitle: widget.canManage
+                ? context.tr(fr: 'Laissez la maison réagir seule : « Si mouvement, alors allumer ».', en: 'Let the home react on its own: “If motion, then turn on”.')
+                : context.tr(fr: 'Seuls les administrateurs peuvent créer des automatisations.', en: 'Only administrators can create automations.'),
+            actionLabel: widget.canManage ? context.tr(fr: 'Créer une automatisation', en: 'Create an automation') : null,
+            onAction: widget.canManage ? () => context.push(Routes.automationNew) : null,
           );
         }
         return RefreshIndicator(
@@ -253,6 +262,17 @@ class _AutomationsTabState extends ConsumerState<_AutomationsTab> {
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final automation = automations[index];
+              final card = AutomationCard(
+                automation: automation,
+                devices: devices,
+                scenes: scenes,
+                onTap: () => context.push(Routes.automation(automation.id)),
+                onLongPress: widget.canManage ? () => _menu(automation) : null,
+                // A null toggle renders the switch disabled (enable/disable are admin-only).
+                onToggle: widget.canManage ? (enabled) => _toggle(automation, enabled) : null,
+                onTest: () => _test(automation),
+              );
+              if (!widget.canManage) return card;
               return Dismissible(
                 key: ValueKey('automation-${automation.id}'),
                 direction: DismissDirection.endToStart,
@@ -264,15 +284,7 @@ class _AutomationsTabState extends ConsumerState<_AutomationsTab> {
                   decoration: BoxDecoration(color: SafeRColors.danger, borderRadius: BorderRadius.circular(16)),
                   child: const Icon(Icons.delete_outline, color: Colors.white),
                 ),
-                child: AutomationCard(
-                  automation: automation,
-                  devices: devices,
-                  scenes: scenes,
-                  onTap: () => context.push(Routes.automation(automation.id)),
-                  onLongPress: () => _menu(automation),
-                  onToggle: (enabled) => _toggle(automation, enabled),
-                  onTest: () => _test(automation),
-                ),
+                child: card,
               );
             },
           ),

@@ -874,9 +874,11 @@ class DahuaAdapter(BrandAdapter):
 
     async def _coaxial(self, api: DahuaClient, device: DeviceRef, code: str, on: bool) -> Dict[str, Any]:
         channel = _channel_of(device)
+        # Dahua encoding: info[0].IO 1 = open (on), 2 = close (off) -- 0 is undefined and ignored/rejected by
+        # firmwares; TriggerMode 2 = manual (1 would be alarm linkage).
         params = {
             "action": "control", "channel": channel - 1,
-            "info[0].Type": COAXIAL_TYPES[code], "info[0].IO": 1 if on else 0,
+            "info[0].Type": COAXIAL_TYPES[code], "info[0].IO": 1 if on else 2, "info[0].TriggerMode": 2,
         }
         response = await api.request("GET", PATH_COAXIAL, params)
         if response.status_code in (400, 404) or (response.status_code == 200 and is_error_body(response.text)):

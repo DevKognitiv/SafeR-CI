@@ -143,9 +143,12 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
     final title = Text(_isNew ? context.tr(fr: 'Nouvelle automatisation', en: 'New automation') : context.tr(fr: "Modifier l'automatisation", en: 'Edit automation'));
     if (home == null) return Scaffold(appBar: AppBar(title: title), body: NoHomeView(homes: homes));
     final homeId = home.id;
+    // Automation create/update/delete are admin-only on the hub: members get a read-only view.
+    final canManage = home.canManage;
+    if (_isNew && !canManage) return Scaffold(appBar: AppBar(title: title), body: const AdminOnlyEditorView());
     if (!_isNew) {
       final automationsAsync = ref.watch(automationsProvider(homeId));
-      final found = automationsAsync.value?.where((a) => a.id == widget.automationId);
+      final found = automationsAsync.valueOrNull?.where((a) => a.id == widget.automationId);
       if (found == null || found.isEmpty) {
         return Scaffold(
           appBar: AppBar(title: title),
@@ -163,15 +166,15 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
       }
       _hydrate(found.first);
     }
-    final devices = ref.watch(devicesProvider(homeId)).value ?? const <Device>[];
-    final scenes = ref.watch(scenesProvider(homeId)).value ?? const <Scene>[];
+    final devices = ref.watch(devicesProvider(homeId)).valueOrNull ?? const <Device>[];
+    final scenes = ref.watch(scenesProvider(homeId)).valueOrNull ?? const <Scene>[];
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return Scaffold(
       appBar: AppBar(
         title: title,
         actions: [
-          if (!_isNew)
+          if (!_isNew && canManage)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: context.tr(fr: "Supprimer l'automatisation", en: 'Delete automation'),
@@ -257,7 +260,7 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
-      bottomNavigationBar: SaveBar(label: context.tr(fr: 'Enregistrer', en: 'Save'), busy: _busy, onPressed: () => _save(homeId)),
+      bottomNavigationBar: canManage ? SaveBar(label: context.tr(fr: 'Enregistrer', en: 'Save'), busy: _busy, onPressed: () => _save(homeId)) : const ReadOnlyEditorBar(),
     );
   }
 }

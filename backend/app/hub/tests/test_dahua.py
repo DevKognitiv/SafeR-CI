@@ -529,14 +529,14 @@ async def test_light_and_siren_commands_and_unsupported(adapter: DahuaAdapter):
     assert await adapter.send_command(camera_ref(), "siren", "on", ctx) == {"siren": True}
     queries = [r.raw_query for r in server.sent("/cgi-bin/coaxialControlIO.cgi", "control")]
     assert queries == [
-        "action=control&channel=0&info[0].Type=1&info[0].IO=1",
-        "action=control&channel=0&info[0].Type=1&info[0].IO=0",
-        "action=control&channel=0&info[0].Type=2&info[0].IO=1",
+        "action=control&channel=0&info[0].Type=1&info[0].IO=1&info[0].TriggerMode=2",
+        "action=control&channel=0&info[0].Type=1&info[0].IO=2&info[0].TriggerMode=2",  # off is IO=2, never 0
+        "action=control&channel=0&info[0].Type=2&info[0].IO=1&info[0].TriggerMode=2",
     ]
     # recorder channel 3 -> coaxial channel index 2 (0-based)
     nvr = FakeDahua(nvr_routes())
     await adapter.send_command(channel_ref(3), "siren", False, ctx_for(nvr))
-    assert nvr.sent("/cgi-bin/coaxialControlIO.cgi", "control")[0].raw_query == "action=control&channel=2&info[0].Type=2&info[0].IO=0"
+    assert nvr.sent("/cgi-bin/coaxialControlIO.cgi", "control")[0].raw_query == "action=control&channel=2&info[0].Type=2&info[0].IO=2&info[0].TriggerMode=2"
     for code in ("recording", "privacy_mode", "brightness"):
         with pytest.raises(AdapterError) as exc:
             await adapter.send_command(camera_ref(), code, True, ctx)

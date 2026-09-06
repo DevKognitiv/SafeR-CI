@@ -14,10 +14,12 @@ enum _DeviceAction { rename, move, settings }
 
 /// Long-press menu of a device tile: rename · move to room · device settings.
 Future<void> showDeviceActions(BuildContext context, WidgetRef ref, {required Device device, required List<Room> rooms}) async {
+  // Rename / move go through PATCH /devices, which the hub reserves to admins.
+  final canManage = ref.read(currentHomeProvider)?.canManage ?? false;
   final action = await showModalBottomSheet<_DeviceAction>(
     context: context,
     showDragHandle: true,
-    builder: (_) => _DeviceActionsSheet(device: device, rooms: rooms),
+    builder: (_) => _DeviceActionsSheet(device: device, rooms: rooms, canManage: canManage),
   );
   if (action == null || !context.mounted) return;
   switch (action) {
@@ -70,10 +72,11 @@ Future<void> _move(BuildContext context, WidgetRef ref, Device device, List<Room
 }
 
 class _DeviceActionsSheet extends StatelessWidget {
-  const _DeviceActionsSheet({required this.device, required this.rooms});
+  const _DeviceActionsSheet({required this.device, required this.rooms, required this.canManage});
 
   final Device device;
   final List<Room> rooms;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
@@ -95,16 +98,18 @@ class _DeviceActionsSheet extends StatelessWidget {
             subtitle: Text(subtitle),
           ),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: Text(context.tr(fr: 'Renommer', en: 'Rename')),
-            onTap: () => Navigator.of(context).pop(_DeviceAction.rename),
-          ),
-          ListTile(
-            leading: const Icon(Icons.meeting_room_outlined),
-            title: Text(context.tr(fr: 'Déplacer vers une pièce', en: 'Move to a room')),
-            onTap: () => Navigator.of(context).pop(_DeviceAction.move),
-          ),
+          if (canManage) ...[
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(context.tr(fr: 'Renommer', en: 'Rename')),
+              onTap: () => Navigator.of(context).pop(_DeviceAction.rename),
+            ),
+            ListTile(
+              leading: const Icon(Icons.meeting_room_outlined),
+              title: Text(context.tr(fr: 'Déplacer vers une pièce', en: 'Move to a room')),
+              onTap: () => Navigator.of(context).pop(_DeviceAction.move),
+            ),
+          ],
           ListTile(
             leading: const Icon(Icons.settings_outlined),
             title: Text(context.tr(fr: 'Paramètres de l\'appareil', en: 'Device settings')),

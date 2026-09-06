@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/i18n.dart';
 import '../../core/models/home.dart';
@@ -9,7 +10,9 @@ import 'widgets/me_common.dart';
 import 'widgets/member_dialogs.dart';
 import 'widgets/member_tile.dart';
 
-/// Members of a home: list with roles; owner/admin can invite, change roles and remove.
+/// Members of a home: list with roles. Mirrors the hub's rules: owner/admin invite,
+/// admins remove plain members, only the owner changes roles / removes admins /
+/// transfers ownership, and anyone but the owner can leave.
 class MembersScreen extends ConsumerWidget {
   const MembersScreen({super.key, required this.homeId});
 
@@ -40,14 +43,51 @@ class MembersScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _changeRole(BuildContext context, WidgetRef ref, Member member) async {
-    final role = await showRolePickerSheet(context, current: member.role);
+  Future<void> _changeRole(BuildContext context, WidgetRef ref, Member member, {required bool isOwner}) async {
+    final role = await showRolePickerSheet(context, current: member.role, allowOwner: isOwner);
     if (role == null || role == member.role || !context.mounted) return;
+    if (role == 'owner') {
+      final name = member.name.isEmpty ? member.email : member.name;
+      final confirmed = await confirmDialog(
+        context,
+        title: context.tr(fr: 'Transférer la propriété à $name ?', en: 'Transfer ownership to $name?'),
+        message: context.tr(
+          fr: 'Vous deviendrez administrateur de cette maison. Seul le nouveau propriétaire pourra la supprimer ou changer les rôles.',
+          en: 'You will become an admin of this home. Only the new owner will be able to delete it or change roles.',
+        ),
+        confirmLabel: context.tr(fr: 'Transférer', en: 'Transfer'),
+        destructive: true,
+      );
+      if (!confirmed || !context.mounted) return;
+    }
     try {
       await ref.read(hubClientProvider).updateMember(homeId, member.userId, role);
-      ref.invalidate(membersProvider(homeId));
+      // Ownership transfer also changes the caller's role: refresh the homes too.
+      _refresh(ref);
       if (!context.mounted) return;
-      showSnack(context, context.tr(fr: 'Rôle mis à jour', en: 'Role updated'));
+      showSnack(context, role == 'owner' ? context.tr(fr: 'Propriété transférée', en: 'Ownership transferred') : context.tr(fr: 'Rôle mis à jour', en: 'Role updated'));
+    } catch (e) {
+      if (context.mounted) showErrorSnack(context, memberErrorMessage(context, e));
+    }
+  }
+
+  Future<void> _leave(BuildContext context, WidgetRef ref, Home home) async {
+    final confirmed = await confirmDialog(
+      context,
+      title: context.tr(fr: 'Quitter « ${home.name} » ?', en: 'Leave "${home.name}"?'),
+      message: context.tr(
+        fr: "Vous n'aurez plus accès à cette maison ni à ses appareils. Un administrateur pourra vous réinviter.",
+        en: 'You will lose access to this home and its devices. An administrator can invite you again.',
+      ),
+      confirmLabel: context.tr(fr: 'Quitter', en: 'Leave'),
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    try {
+      await ref.read(homesProvider.notifier).leave(home.id);
+      if (!context.mounted) return;
+      showSnack(context, context.tr(fr: 'Vous avez quitté « ${home.name} »', en: 'You left "${home.name}"'));
+      if (context.canPop()) context.pop();
     } catch (e) {
       if (context.mounted) showErrorSnack(context, memberErrorMessage(context, e));
     }
@@ -78,6 +118,7 @@ class MembersScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final home = _home(ref);
     final canManage = home?.canManage ?? false;
+    final isOwner = home?.isOwner ?? false;
     final myId = ref.watch(authProvider).user?.id;
     final members = ref.watch(membersProvider(homeId));
     return Scaffold(
@@ -120,16 +161,28 @@ class MembersScreen extends ConsumerWidget {
                       MemberTile(
                         member: member,
                         isMe: member.userId == myId,
-                        onChangeRole: canManage && member.role != 'owner' ? () => _changeRole(context, ref, member) : null,
-                        onRemove: canManage && member.role != 'owner' ? () => _remove(context, ref, member) : null,
+                        // Role changes are owner-only (PATCH /members requires owner).
+                        onChangeRole: isOwner && member.role != 'owner' ? () => _changeRole(context, ref, member, isOwner: true) : null,
+                        // Admins remove plain members; only the owner removes another admin.
+                        onRemove: member.userId != myId && member.role != 'owner' && (isOwner || (canManage && member.role == 'member'))
+                            ? () => _remove(context, ref, member)
+                            : null,
+                        // Own row: leave (the owner must transfer ownership first).
+                        onLeave: member.userId == myId && member.role != 'owner' && home != null ? () => _leave(context, ref, home) : null,
                       ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  canManage
-                      ? context.tr(fr: 'Les membres invités doivent déjà avoir un compte SafeR. Le propriétaire ne peut pas être retiré.', en: 'Invited members must already have a SafeR account. The owner cannot be removed.')
-                      : context.tr(fr: 'Seuls le propriétaire et les administrateurs peuvent gérer les membres.', en: 'Only the owner and admins can manage members.'),
+                  isOwner
+                      ? context.tr(
+                          fr: 'Les membres invités doivent déjà avoir un compte SafeR. Pour quitter la maison, transférez d\'abord la propriété.',
+                          en: 'Invited members must already have a SafeR account. To leave the home, transfer ownership first.')
+                      : canManage
+                          ? context.tr(
+                              fr: 'Les membres invités doivent déjà avoir un compte SafeR. Seul le propriétaire change les rôles ou retire un administrateur.',
+                              en: 'Invited members must already have a SafeR account. Only the owner changes roles or removes an admin.')
+                          : context.tr(fr: 'Seuls le propriétaire et les administrateurs peuvent gérer les membres.', en: 'Only the owner and admins can manage members.'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),

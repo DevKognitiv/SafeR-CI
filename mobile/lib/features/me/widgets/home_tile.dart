@@ -14,6 +14,7 @@ class HomeTile extends StatelessWidget {
     required this.onMembers,
     this.onEdit,
     this.onDelete,
+    this.onLeave,
   });
 
   final Home home;
@@ -22,6 +23,9 @@ class HomeTile extends StatelessWidget {
   final VoidCallback onMembers;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+
+  /// Non-owners only: leave the home.
+  final VoidCallback? onLeave;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +85,8 @@ class HomeTile extends StatelessWidget {
                       onEdit?.call();
                     case _HomeAction.delete:
                       onDelete?.call();
+                    case _HomeAction.leave:
+                      onLeave?.call();
                   }
                 },
                 itemBuilder: (context) => [
@@ -102,6 +108,15 @@ class HomeTile extends StatelessWidget {
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
+                  if (onLeave != null)
+                    PopupMenuItem(
+                      value: _HomeAction.leave,
+                      child: ListTile(
+                        leading: Icon(Icons.exit_to_app, color: theme.colorScheme.error),
+                        title: Text(context.tr(fr: 'Quitter la maison', en: 'Leave home'), style: TextStyle(color: theme.colorScheme.error)),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -112,4 +127,4 @@ class HomeTile extends StatelessWidget {
   }
 }
 
-enum _HomeAction { members, edit, delete }
+enum _HomeAction { members, edit, delete, leave }

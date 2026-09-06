@@ -56,8 +56,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final unassigned = ref.watch(roomDevicesProvider((homeId: homeId, roomId: kUnassignedRoomId)));
     final selectedRoom = _effectiveRoom(rooms, unassigned.isNotEmpty);
     final visible = ref.watch(roomDevicesProvider((homeId: homeId, roomId: selectedRoom)));
-    final realtime = ref.watch(realtimeEnabledProvider);
-    final offline = realtime && ref.watch(hubConnectedProvider(homeId)).value == false;
+    // Only meaningful when a socket is supposed to be open (build flag + user preference).
+    final realtime = ref.watch(realtimeActiveProvider);
+    final offline = realtime && ref.watch(hubConnectedProvider(homeId)).valueOrNull == false;
+    final canManage = home.canManage;
 
     return Scaffold(
       appBar: HomeAppBar(home: home),
@@ -68,7 +70,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           slivers: [
             if (offline) const SliverToBoxAdapter(child: OfflineBanner()),
             if (home.alarmActive) SliverToBoxAdapter(child: AlarmBanner(onTap: () => context.go(Routes.security))),
-            SliverToBoxAdapter(child: WeatherHeaderCard(home: home, devices: devicesAsync.value)),
+            SliverToBoxAdapter(child: WeatherHeaderCard(home: home, devices: devicesAsync.valueOrNull)),
             SliverPersistentHeader(
               pinned: true,
               delegate: _PinnedHeaderDelegate(
@@ -93,11 +95,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: EmptyState(
                         icon: Icons.devices_other,
                         title: context.tr(fr: 'Aucun appareil', en: 'No devices'),
-                        subtitle: selectedRoom == null
-                            ? context.tr(fr: 'Ajoutez votre premier appareil pour commencer', en: 'Add your first device to get started')
-                            : context.tr(fr: 'Aucun appareil dans cette pièce', en: 'No devices in this room'),
-                        actionLabel: context.tr(fr: 'Ajouter un appareil', en: 'Add device'),
-                        onAction: () => context.push(Routes.addDevice),
+                        subtitle: selectedRoom != null
+                            ? context.tr(fr: 'Aucun appareil dans cette pièce', en: 'No devices in this room')
+                            : canManage
+                                ? context.tr(fr: 'Ajoutez votre premier appareil pour commencer', en: 'Add your first device to get started')
+                                : context.tr(fr: "Demandez à un administrateur d'ajouter des appareils", en: 'Ask an administrator to add devices'),
+                        // Pairing is admin/owner only on the hub: members get no dead-end action.
+                        actionLabel: canManage ? context.tr(fr: 'Ajouter un appareil', en: 'Add device') : null,
+                        onAction: canManage ? () => context.push(Routes.addDevice) : null,
                       ),
                     )
                   : DeviceGridSliver(homeId: homeId, devices: visible, rooms: rooms),

@@ -74,7 +74,7 @@ ChipSpec _sensorState(BuildContext context, Device device) {
       final on = device.boolValue('siren') ?? false;
       return (label: on ? context.tr(fr: 'Active', en: 'Sounding') : context.tr(fr: 'Silencieuse', en: 'Silent'), color: on ? bad : ok, icon: Icons.campaign);
     default:
-      final summary = device.stateSummary;
+      final summary = deviceStateSummary(context, device);
       return (label: summary.isEmpty ? 'OK' : summary, color: device.isAlerting ? bad : ok, icon: null);
   }
 }

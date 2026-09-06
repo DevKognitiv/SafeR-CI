@@ -56,7 +56,7 @@ class WeatherHeaderCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final weather = ref.watch(weatherProvider(home.id));
-    final data = weather.value;
+    final data = weather.valueOrNull;
     final Widget summary = data != null && data.available ? _WeatherSummary(weather: data) : _DeviceCountSummary(devices: devices);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),

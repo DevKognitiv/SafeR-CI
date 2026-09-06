@@ -7,7 +7,6 @@ import '../../core/i18n.dart';
 import '../../core/providers/providers.dart';
 import '../../core/router.dart';
 import 'widgets/me_common.dart';
-import 'widgets/notification_prefs.dart';
 import 'widgets/settings_widgets.dart';
 
 /// App settings: language, theme, hub URL, notifications and version.

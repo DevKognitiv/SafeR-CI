@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:safer_ci/core/models/models.dart';
 import 'package:safer_ci/core/providers/providers.dart';
 import 'package:safer_ci/features/device/device_detail_screen.dart';
 import 'package:safer_ci/features/device/device_settings_screen.dart';
@@ -282,6 +283,54 @@ void main() {
       expect(find.text('Appareil toujours hors ligne'), findsOneWidget);
     });
 
+    testWidgets('offline generic device: switches, sliders, chips and the send button are disabled', (tester) async {
+      final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-generic'), client: DeviceFakeHubClient(offlineIds: const {'dev-generic'}));
+      expect(find.byType(DeviceOfflineBanner), findsOneWidget);
+      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      expect(tester.widget<Slider>(sliderIn(const Key('slider-level'))).onChanged, isNull);
+      for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip))) {
+        expect(chip.onSelected, isNull);
+      }
+      await tester.tap(find.text('Fort'));
+      await tester.tap(find.byType(Switch));
+      await settle(tester);
+      expect(r.client.commands, isEmpty);
+    });
+
+    testWidgets('offline zone: the bypass switch of the panel children list is disabled', (tester) async {
+      final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-panel'), client: DeviceFakeHubClient(offlineIds: const {'dev-zone'}));
+      await tester.ensureVisible(find.text('Zone salon'));
+      await settle(tester);
+      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      await tester.tap(find.byType(Switch));
+      await settle(tester);
+      expect(r.client.commands, isEmpty);
+    });
+
+    testWidgets('offline colour light: hue and saturation sliders are disabled like brightness', (tester) async {
+      final rgb = Device(
+        id: 'dev-rgb',
+        homeId: FakeHubClient.homeId,
+        name: 'Bandeau LED',
+        brand: 'tuya',
+        protocol: 'tuya_cloud',
+        category: 'light',
+        externalId: 'rgb-1',
+        capabilities: const [
+          Capability(code: 'switch', type: 'bool', writable: true),
+          Capability(code: 'brightness', type: 'int', writable: true, min: 0, max: 100),
+          Capability(code: 'color', type: 'color', writable: true),
+          Capability(code: 'work_mode', type: 'enum', writable: true, values: ['white', 'colour']),
+        ],
+        state: const {'switch': true, 'brightness': 50, 'color': {'h': 120, 's': 80, 'v': 100}, 'work_mode': 'colour'},
+      );
+      await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-rgb'), client: DeviceFakeHubClient(offlineIds: const {'dev-rgb'}, extras: [rgb]));
+      expect(find.byType(LightPanel), findsOneWidget);
+      expect(tester.widget<Slider>(sliderIn(const Key('slider-brightness'))).onChanged, isNull);
+      expect(tester.widget<Slider>(sliderIn(const Key('slider-hue'))).onChanged, isNull);
+      expect(tester.widget<Slider>(sliderIn(const Key('slider-saturation'))).onChanged, isNull);
+    });
+
     testWidgets('online device has no offline banner and "..." opens the settings route', (tester) async {
       final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-light'));
       expect(find.byType(DeviceOfflineBanner), findsNothing);
@@ -368,6 +417,21 @@ void main() {
       expect(after, before - 1);
       expect(r.container.read(devicesProvider(FakeHubClient.homeId)).value!.any((d) => d.id == 'dev-plug'), isFalse);
       expect(r.router.routeInformationProvider.value.uri.toString(), '/');
+    });
+
+    testWidgets('members get a read-only settings screen (no rename/move/icon/remove)', (tester) async {
+      final r = await pumpDevice(tester, const DeviceSettingsScreen(deviceId: 'dev-plug'), client: DeviceFakeHubClient(role: 'member'));
+      expect(find.text('Zone de danger'), findsNothing);
+      expect(find.text("Supprimer l'appareil"), findsNothing);
+      expect(find.textContaining('Seuls les administrateurs peuvent renommer'), findsOneWidget);
+      await tester.tap(find.text('Nom'));
+      await settle(tester);
+      expect(find.byType(TextField), findsNothing);
+      // Refresh stays available to members.
+      await tester.ensureVisible(find.text('Actualiser'));
+      await tester.tap(find.text('Actualiser'));
+      await settle(tester);
+      expect(r.client.refreshCalls, 1);
     });
 
     testWidgets('refresh action calls the hub', (tester) async {

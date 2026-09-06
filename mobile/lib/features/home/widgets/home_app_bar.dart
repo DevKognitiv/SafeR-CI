@@ -22,7 +22,8 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
         titleSpacing: 8,
         title: HomeSwitcherButton(home: home),
         actions: [
-          const AddMenuButton(),
+          // Add device / scan / manage rooms are admin-only on the hub.
+          if (home.canManage) const AddMenuButton(),
           MessageBell(homeId: home.id),
           const SizedBox(width: 4),
         ],
@@ -131,7 +132,7 @@ class MessageBell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadCountProvider(homeId)).value?.total ?? 0;
+    final unread = ref.watch(unreadCountProvider(homeId)).valueOrNull?.total ?? 0;
     return IconButton(
       tooltip: context.tr(fr: 'Centre de messages', en: 'Message center'),
       onPressed: () => context.push(Routes.messages),

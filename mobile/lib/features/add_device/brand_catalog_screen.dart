@@ -7,6 +7,7 @@ import '../../core/models/brand.dart';
 import '../../core/providers/providers.dart';
 import '../../core/routes.dart';
 import '../../core/widgets/widgets.dart';
+import 'widgets/admin_only_view.dart';
 import 'widgets/brand_card.dart';
 import 'widgets/category_grid.dart';
 import 'widgets/scan_card.dart';
@@ -89,6 +90,10 @@ class _BrandCatalogScreenState extends ConsumerState<BrandCatalogScreen> {
     final groups = categoriesAsync.valueOrNull ?? const <CategoryGroup>[];
     final brandNames = {for (final b in brandsAsync.valueOrNull ?? const <BrandInfo>[]) b.id: b.name};
     final selectedCategory = _category(groups, _categoryId);
+    final home = ref.watch(currentHomeProvider);
+    if (home != null && !home.canManage) {
+      return Scaffold(appBar: AppBar(title: Text(context.tr(fr: 'Ajouter un appareil', en: 'Add device'))), body: const AdminOnlyView());
+    }
 
     return Scaffold(
       appBar: AppBar(

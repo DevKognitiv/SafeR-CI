@@ -157,24 +157,30 @@ class _RoomManagementScreenState extends ConsumerState<RoomManagementScreen> {
     }
 
     final List<Room> rooms = _pendingOrder ?? ref.watch(roomsProvider(home.id));
-    final devices = ref.watch(devicesProvider(home.id)).value;
+    final devices = ref.watch(devicesProvider(home.id)).valueOrNull;
     int countFor(Room room) => devices == null ? room.deviceCount : devices.where((d) => d.roomId == room.id).length;
     final theme = Theme.of(context);
+    // Room create/rename/delete/reorder are admin-only on the hub: members get a read-only list.
+    final canManage = home.canManage;
 
     return Scaffold(
       appBar: AppBar(title: title),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _add(home.id),
-        icon: const Icon(Icons.add),
-        label: Text(context.tr(fr: 'Ajouter une pièce', en: 'Add a room')),
-      ),
+      floatingActionButton: canManage
+          ? FloatingActionButton.extended(
+              onPressed: () => _add(home.id),
+              icon: const Icon(Icons.add),
+              label: Text(context.tr(fr: 'Ajouter une pièce', en: 'Add a room')),
+            )
+          : null,
       body: rooms.isEmpty
           ? EmptyState(
               icon: Icons.meeting_room_outlined,
               title: context.tr(fr: 'Aucune pièce', en: 'No rooms'),
-              subtitle: context.tr(fr: 'Créez des pièces pour organiser vos appareils.', en: 'Create rooms to organise your devices.'),
-              actionLabel: context.tr(fr: 'Ajouter une pièce', en: 'Add a room'),
-              onAction: () => _add(home.id),
+              subtitle: canManage
+                  ? context.tr(fr: 'Créez des pièces pour organiser vos appareils.', en: 'Create rooms to organise your devices.')
+                  : context.tr(fr: 'Seuls les administrateurs peuvent créer des pièces.', en: 'Only administrators can create rooms.'),
+              actionLabel: canManage ? context.tr(fr: 'Ajouter une pièce', en: 'Add a room') : null,
+              onAction: canManage ? () => _add(home.id) : null,
             )
           : Column(
               children: [
@@ -186,7 +192,9 @@ class _RoomManagementScreenState extends ConsumerState<RoomManagementScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          context.tr(fr: 'Appuyez sur une pièce pour la modifier, glissez la poignée pour réorganiser.', en: 'Tap a room to edit it, drag the handle to reorder.'),
+                          canManage
+                              ? context.tr(fr: 'Appuyez sur une pièce pour la modifier, glissez la poignée pour réorganiser.', en: 'Tap a room to edit it, drag the handle to reorder.')
+                              : context.tr(fr: 'Seuls les administrateurs peuvent modifier les pièces.', en: 'Only administrators can edit rooms.'),
                           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),
@@ -198,7 +206,8 @@ class _RoomManagementScreenState extends ConsumerState<RoomManagementScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     buildDefaultDragHandles: false,
                     itemCount: rooms.length,
-                    onReorderItem: (oldIndex, newIndex) => _reorder(home.id, rooms, oldIndex, newIndex),
+                    // Without drag handles nothing can start a reorder; keep the guard anyway.
+                    onReorderItem: (oldIndex, newIndex) => canManage ? _reorder(home.id, rooms, oldIndex, newIndex) : null,
                     proxyDecorator: (child, _, __) => Material(color: Colors.transparent, elevation: 4, borderRadius: BorderRadius.circular(16), child: child),
                     itemBuilder: (context, index) {
                       final room = rooms[index];
@@ -209,7 +218,8 @@ class _RoomManagementScreenState extends ConsumerState<RoomManagementScreen> {
                           room: room,
                           deviceCount: countFor(room),
                           index: index,
-                          onTap: () => _showActions(room),
+                          canManage: canManage,
+                          onTap: canManage ? () => _showActions(room) : null,
                         ),
                       );
                     },
@@ -224,12 +234,15 @@ class _RoomManagementScreenState extends ConsumerState<RoomManagementScreen> {
 enum _RoomAction { rename, delete }
 
 class _RoomCard extends StatelessWidget {
-  const _RoomCard({required this.room, required this.deviceCount, required this.index, required this.onTap});
+  const _RoomCard({required this.room, required this.deviceCount, required this.index, required this.canManage, this.onTap});
 
   final Room room;
   final int deviceCount;
   final int index;
-  final VoidCallback onTap;
+
+  /// False renders a read-only row (no drag handle, no actions).
+  final bool canManage;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -246,13 +259,15 @@ class _RoomCard extends StatelessWidget {
         ),
         title: Text(room.name, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(countLabel),
-        trailing: ReorderableDragStartListener(
-          index: index,
-          child: Semantics(
-            label: context.tr(fr: 'Réorganiser ${room.name}', en: 'Reorder ${room.name}'),
-            child: const SizedBox(width: 44, height: 44, child: Icon(Icons.drag_handle)),
-          ),
-        ),
+        trailing: canManage
+            ? ReorderableDragStartListener(
+                index: index,
+                child: Semantics(
+                  label: context.tr(fr: 'Réorganiser ${room.name}', en: 'Reorder ${room.name}'),
+                  child: const SizedBox(width: 44, height: 44, child: Icon(Icons.drag_handle)),
+                ),
+              )
+            : null,
         onTap: onTap,
       ),
     );

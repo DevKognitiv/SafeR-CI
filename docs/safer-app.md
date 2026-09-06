@@ -114,7 +114,7 @@ sensors (smoke, CO, gas, water) alarm in every mode.
 # Hub standalone (SQLite, no PostgreSQL needed)
 cd backend
 pip install -r requirements.txt aiosqlite
-SECRET_KEY=dev uvicorn app.hub.app:app --reload --port 8000
+SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" uvicorn app.hub.app:app --reload --port 8000
 # Tests
 pytest app/hub/tests -q
 

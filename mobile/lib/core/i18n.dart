@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'models/device.dart';
+
 /// Minimal French/English localisation without code generation.
 ///
 /// Usage: `context.tr(fr: 'Accueil', en: 'Home')`. French is the default
@@ -71,4 +73,47 @@ String timeAgo(BuildContext context, DateTime? time) {
     return context.tr(fr: 'Il y a ${diff.inHours} h', en: '${diff.inHours} h ago');
   }
   return context.tr(fr: 'Il y a ${diff.inDays} j', en: '${diff.inDays} d ago');
+}
+
+/// Localised short summary of a device state for tiles and rows
+/// ("ON · 80%", "FERMÉ"/"CLOSED", "26.5 °C"). Numeric-only summaries come
+/// from [Device.stateSummary]; the word-based ones are translated here.
+String deviceStateSummary(BuildContext context, Device device) {
+  String tr(String fr, String en) => context.tr(fr: fr, en: en);
+  final offline = tr('HORS LIGNE', 'OFFLINE');
+  switch (device.category) {
+    case 'sensor_contact':
+      return (device.boolValue('contact') ?? false) ? tr('OUVERT', 'OPEN') : tr('FERMÉ', 'CLOSED');
+    case 'sensor_motion':
+      return (device.boolValue('motion') ?? false) ? tr('MOUVEMENT', 'MOTION') : tr('CALME', 'CLEAR');
+    case 'sensor_smoke':
+      return (device.boolValue('smoke') ?? false) ? tr('FUMÉE !', 'SMOKE!') : 'OK';
+    case 'sensor_water':
+      return (device.boolValue('water_leak') ?? false) ? tr('FUITE !', 'LEAK!') : 'OK';
+    case 'sensor_gas':
+      return (device.boolValue('gas') ?? false) ? tr('GAZ !', 'GAS!') : 'OK';
+    case 'lock':
+      return (device.boolValue('locked') ?? false) ? tr('VERROUILLÉE', 'LOCKED') : tr('OUVERTE', 'UNLOCKED');
+    case 'alarm_panel':
+      return (device.boolValue('alarm') ?? false) ? tr('ALARME !', 'ALARM!') : (device.stringValue('arm_mode') ?? '').toUpperCase();
+    case 'alarm_zone':
+      if (device.boolValue('alarm') ?? false) return tr('ALARME !', 'ALARM!');
+      return (device.boolValue('open') ?? false) ? tr('OUVERT', 'OPEN') : 'OK';
+    case 'camera':
+    case 'doorbell':
+    case 'nvr':
+      if (device.boolValue('motion') ?? false) return tr('MOUVEMENT', 'MOTION');
+      return device.online ? tr('EN LIGNE', 'ONLINE') : offline;
+    case 'light':
+    case 'switch':
+    case 'plug':
+    case 'siren':
+    case 'cover':
+    case 'thermostat':
+    case 'sensor_temperature':
+    case 'sensor_humidity':
+      return device.stateSummary;
+    default:
+      return device.online ? '' : offline;
+  }
 }

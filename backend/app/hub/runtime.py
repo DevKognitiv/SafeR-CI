@@ -1,8 +1,9 @@
 """Hub runtime: one object owning settings, database, event bus, vault and background services."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Dict, Optional, Set, Tuple
 
 import httpx
 
@@ -34,17 +35,32 @@ class HubRuntime:
         self.started = False
         # Filled lazily by services to avoid import cycles
         self.services: Dict[str, Any] = {}
-        self._contexts: Dict[str, AdapterContext] = {}
+        self._contexts: Dict[Tuple[str, Optional[str]], AdapterContext] = {}
+        self.tasks: Set["asyncio.Task[Any]"] = set()
+
+    # ------------------------------------------------------------------ background tasks
+    def spawn(self, coro: Awaitable[Any], name: str) -> "asyncio.Task[Any]":
+        """Run ``coro`` in the background; ``stop()`` waits for it. The task is kept referenced until done."""
+        task = asyncio.ensure_future(coro)
+        task.set_name(name)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
 
     # ------------------------------------------------------------------ adapters
-    def ctx_for(self, brand_id: str) -> AdapterContext:
-        """Adapter context bound to a brand (so pushed events know their brand)."""
-        if brand_id not in self._contexts:
+    def ctx_for(self, brand_id: str, home_id: Optional[str] = None) -> AdapterContext:
+        """Adapter context bound to a brand and, for push subscriptions, to a home.
+
+        ``(brand, external_id)`` is only unique per home, so events emitted through a home-bound context are
+        applied to that home only. Contexts are cached per ``(brand, home_id)``.
+        """
+        key = (brand_id, home_id)
+        if key not in self._contexts:
 
             async def _emit(event_type: str, external_id: str, payload: Dict[str, Any]) -> None:
                 device_service = self.services.get("devices")
                 if device_service is not None:
-                    await device_service.handle_push(brand_id, external_id, event_type, payload)
+                    await device_service.handle_push(brand_id, external_id, event_type, payload, home_id=home_id)
 
             async def _update_credentials(integration_id: str, updates: Dict[str, Any]) -> None:
                 from app.hub.models import Integration  # pylint: disable=import-outside-toplevel
@@ -58,7 +74,7 @@ class HubRuntime:
                     integration.credentials_enc = self.vault.encrypt(merged)
                     await session.commit()
 
-            self._contexts[brand_id] = AdapterContext(
+            self._contexts[key] = AdapterContext(
                 settings=self.settings,
                 transport=self.transport,
                 emit=_emit,
@@ -66,7 +82,7 @@ class HubRuntime:
                 timeout=self.settings.HUB_HTTP_TIMEOUT,
                 update_credentials=_update_credentials,
             )
-        return self._contexts[brand_id]
+        return self._contexts[key]
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -115,8 +131,20 @@ class HubRuntime:
                     await service.stop()
                 except Exception:  # pylint: disable=broad-except
                     logger.exception("Failed stopping %s", name)
+        await self.wait_tasks()
         await self.db.dispose()
         self.started = False
+
+
+    async def wait_tasks(self, timeout: float = 15.0) -> None:
+        """Wait for background tasks (SOS forwarding...) so they never touch a disposed engine."""
+        pending = [task for task in self.tasks if not task.done()]
+        if not pending:
+            return
+        done, still = await asyncio.wait(pending, timeout=timeout)
+        del done
+        for task in still:
+            task.cancel()
 
 
 _runtime: Optional[HubRuntime] = None

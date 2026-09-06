@@ -145,7 +145,9 @@ cd SafeR-CI
 cd backend && cp .env.example .env && docker-compose up -d
 
 # Run the SafeR Hub alone (SQLite, no Docker)
-cd backend && pip install -r requirements.txt aiosqlite && SECRET_KEY=dev uvicorn app.hub.app:app --port 8000
+cd backend && pip install -r requirements.txt aiosqlite
+export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"   # required (no placeholder)
+uvicorn app.hub.app:app --port 8000
 
 # Run the SafeR app
 cd ../mobile && flutter pub get && flutter run --dart-define=SAFER_HUB_URL=http://10.0.2.2:8000

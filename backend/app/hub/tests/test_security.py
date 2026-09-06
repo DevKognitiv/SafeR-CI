@@ -1,6 +1,7 @@
 """Security tab tests: state, arm/disarm propagation, software alarm, alarm clear and SOS (no network)."""
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
@@ -17,9 +18,10 @@ from app.hub.adapters.base import (
 from app.hub.adapters.registry import registry
 from app.hub.app import create_app
 from app.hub.capabilities import alarm_panel_caps
-from app.hub.models import Device, Home
+from app.hub.models import Device, Home, Message
 from app.hub.runtime import set_runtime
 from app.hub.schemas import DeviceOut
+from app.hub.services.device_service import DeviceService
 from app.hub.services.security_service import MODE_LABELS, set_security_mode
 from app.hub.tests.conftest import PREFIX, make_settings, register_user
 
@@ -396,7 +398,10 @@ async def test_sos_creates_alert_message_event_and_forwards(incidents):
     body = response.json()
     assert body["home_id"] == home["id"] and body["user_id"] == auth["user"]["id"] and body["status"] == "open"
     assert body["lat"] == 5.3456 and body["lon"] == -4.0123 and body["note"] == "Intrusion en cours"
-    assert body["forwarded"] is True and body["incident_id"] == "inc-123"
+    # Forwarding is fire-and-forget: the response does not wait for the incident platform
+    await app.state.hub_runtime.wait_tasks()
+    stored = (await http.get(f"{PREFIX}/homes/{home['id']}/sos", headers=auth["headers"])).json()[0]
+    assert stored["id"] == body["id"] and stored["forwarded"] is True and stored["incident_id"] == "inc-123"
     # Forwarded through the injected transport with the incident contract
     assert len(calls) == 1
     request = calls[0]
@@ -421,6 +426,7 @@ async def test_sos_location_falls_back_to_home_then_abidjan(incidents):
     response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={"incident_type": "medical"}, headers=auth["headers"])
     assert response.status_code == 201, response.text
     assert response.json()["lat"] is None and response.json()["note"] is None
+    await incidents["app"].state.hub_runtime.wait_tasks()
     sent = json.loads(calls[-1].content)
     assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0)
     assert sent["incident_type"] == "medical" and sent["description"] == "SOS SafeR app"
@@ -428,6 +434,7 @@ async def test_sos_location_falls_back_to_home_then_abidjan(incidents):
     other = await http.post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=auth["headers"])
     response = await http.post(f"{PREFIX}/homes/{other.json()['id']}/sos", json={}, headers=auth["headers"])
     assert response.status_code == 201
+    await incidents["app"].state.hub_runtime.wait_tasks()
     sent = json.loads(calls[-1].content)
     assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
 
@@ -449,6 +456,7 @@ async def test_sos_forward_failure_is_not_fatal(incidents):
     response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={"note": "test"}, headers=auth["headers"])
     assert response.status_code == 201, response.text
     assert response.json()["forwarded"] is False and response.json()["incident_id"] is None
+    await runtime.wait_tasks()
     assert len(calls) == 1
 
     def exploding(request: httpx.Request) -> httpx.Response:
@@ -458,6 +466,7 @@ async def test_sos_forward_failure_is_not_fatal(incidents):
     swap_transport(exploding)
     response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={}, headers=auth["headers"])
     assert response.status_code == 201 and response.json()["forwarded"] is False
+    await runtime.wait_tasks()
     assert len(calls) == 2
     # Both alerts were stored regardless, and the alarm message was posted each time
     listed = (await http.get(f"{PREFIX}/homes/{home['id']}/sos", headers=auth["headers"])).json()
@@ -503,3 +512,91 @@ async def test_sos_list_and_patch(client, auth, home):
     other = (await client.post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=auth["headers"])).json()
     assert (await client.patch(f"{PREFIX}/homes/{other['id']}/sos/{first['id']}", json={"status": "resolved"}, headers=auth["headers"])).status_code == 404
     assert (await client.get(f"{PREFIX}/homes/{other['id']}/sos", headers=auth["headers"])).json() == []
+
+
+# ----------------------------------------------------------------------------- regressions
+async def test_set_mode_survives_a_crashing_panel_adapter(client, auth, home, devices, hub_app, monkeypatch):
+    """A crash (not an AdapterError) inside a panel adapter is reported as a notice, never as a 500."""
+    adapter = registry.get("demo")
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("panel firmware bug")
+
+    monkeypatch.setattr(adapter, "send_command", _boom)
+    body = await set_mode(client, auth, home["id"], "armed_away")
+    assert body["mode"] == "armed_away" and body["alarm_active"] is False
+    notices = await messages(client, auth, home["id"], kind="notice")
+    assert notices and notices[0]["title"] == "Centrale non synchronisée — Centrale d'alarme" and "panel firmware bug" in notices[0]["body"]
+    assert (await messages(client, auth, home["id"], kind="home"))[0]["title"] == "Mode sécurité: Armé (absence)"
+    assert (await security(client, auth, home["id"]))["mode"] == "armed_away"
+    # clearing the alarm also goes through the panels and must survive too
+    assert (await client.post(f"{PREFIX}/homes/{home['id']}/security/alarm/clear", headers=auth["headers"])).status_code == 200
+
+
+async def test_sensor_trip_during_an_open_sos_is_recorded(client, auth, home, devices, hub_app):
+    """An SOS trips the alarm without a device: a real sensor trip meanwhile must still be attributed and kept."""
+    smoke = devices["demo-smoke-1"]
+    await set_mode(client, auth, home["id"], "armed_away")
+    sos = (await client.post(f"{PREFIX}/homes/{home['id']}/sos", json={"note": "help"}, headers=auth["headers"])).json()
+    alarms = collect_events(hub_app, ev.SECURITY_ALARM)
+    await report(hub_app, smoke["id"], {"smoke": True})
+    state = await security(client, auth, home["id"])
+    assert state["alarm_active"] is True and state["alarm_device_id"] == smoke["id"]
+    titles = [m["title"] for m in await messages(client, auth, home["id"], kind="alarm")]
+    assert "🚨 Alarme — Détecteur fumée cuisine" in titles
+    assert [(e.device_id, e.payload["active"]) for e in alarms] == [(smoke["id"], True)]
+    # closing the SOS does not acknowledge the smoke alarm
+    response = await client.patch(f"{PREFIX}/homes/{home['id']}/sos/{sos['id']}", json={"status": "resolved"}, headers=auth["headers"])
+    assert response.status_code == 200
+    state = await security(client, auth, home["id"])
+    assert state["alarm_active"] is True and state["alarm_device_id"] == smoke["id"]
+    assert (await client.post(f"{PREFIX}/homes/{home['id']}/security/alarm/clear", headers=auth["headers"])).json()["alarm_active"] is False
+
+
+async def test_panel_disarm_clears_software_alarm(client, auth, home, devices, hub_app, fake_panel):
+    """Disarming at the keypad (panel pushes arm_mode=disarmed) acknowledges the software alarm like the app does."""
+    panels = await materialize(hub_app, home["id"], "fakepanel", PairResult(devices=[panel_draft()]))
+    panel, door = panels["fp-panel"], devices["demo-door-1"]
+    await set_mode(client, auth, home["id"], "armed_away")
+    await report(hub_app, door["id"], {"contact": True})
+    assert (await security(client, auth, home["id"]))["alarm_active"] is True
+    alarms = collect_events(hub_app, ev.SECURITY_ALARM)
+    modes = collect_events(hub_app, ev.SECURITY_MODE)
+    await report(hub_app, panel["id"], {"arm_mode": "disarmed", "alarm": False})
+    state = await security(client, auth, home["id"])
+    assert state["mode"] == "disarmed" and state["alarm_active"] is False and state["alarm_device_id"] is None
+    assert [(e.device_id, e.payload["active"]) for e in alarms] == [(door["id"], False)]
+    assert [e.payload["mode"] for e in modes] == ["disarmed"]
+    assert "Alarme acquittée" in [m["title"] for m in await messages(client, auth, home["id"], kind="notice")]
+    homes = (await client.get(f"{PREFIX}/homes", headers=auth["headers"])).json()
+    assert homes[0]["alarm_active"] is False
+    # re-arm from the keypad, trip again: a fresh alarm is raised (the stale one no longer blocks it)
+    await report(hub_app, door["id"], {"contact": False})
+    await report(hub_app, panel["id"], {"arm_mode": "armed_away"})
+    await report(hub_app, door["id"], {"contact": True})
+    state = await security(client, auth, home["id"])
+    assert state["alarm_active"] is True and state["alarm_device_id"] == door["id"]
+    assert [(e.device_id, e.payload["active"]) for e in alarms] == [(door["id"], False), (door["id"], True)]
+
+
+async def test_messages_are_published_after_commit(client, auth, home, devices, hub_app, monkeypatch):
+    """``message.new`` must never reach clients for a row that is rolled back, and comes after the state change."""
+    runtime = hub_app.state.hub_runtime
+    pir = devices["demo-pir-1"]
+    seen = collect_events(hub_app, ev.DEVICE_STATE, ev.DEVICE_EVENT, ev.MESSAGE_NEW)
+    await report(hub_app, pir["id"], {"motion": True})
+    assert [e.type for e in seen] == [ev.DEVICE_STATE, ev.DEVICE_EVENT, ev.MESSAGE_NEW]
+    seen.clear()
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("security evaluation crashed")
+
+    monkeypatch.setattr(DeviceService, "_evaluate_security", _boom)
+    with pytest.raises(RuntimeError):
+        await report(hub_app, pir["id"], {"motion": False, "tamper": True})
+    await asyncio.sleep(0)  # give any stray scheduled publication a chance to run
+    assert seen == []
+    async with runtime.db.session() as session:
+        rows = (await session.execute(select(Message).where(Message.home_id == home["id"], Message.title.like("Sabotage%")))).scalars().all()
+    assert rows == []
+    assert (await device_state(client, auth, pir["id"]))["motion"] is True

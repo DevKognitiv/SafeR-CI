@@ -27,3 +27,47 @@ class NoHomeView extends ConsumerWidget {
         ),
       );
 }
+
+/// Shown when a plain member opens "new scene / new automation" (admin-only on the hub).
+class AdminOnlyEditorView extends StatelessWidget {
+  const AdminOnlyEditorView({super.key});
+
+  @override
+  Widget build(BuildContext context) => EmptyState(
+        key: const Key('scenes-admin-only'),
+        icon: Icons.lock_outline,
+        title: context.tr(fr: 'Réservé aux administrateurs', en: 'Administrators only'),
+        subtitle: context.tr(
+          fr: 'Seuls les administrateurs et le propriétaire peuvent créer des scènes et des automatisations.',
+          en: 'Only administrators and the owner can create scenes and automations.',
+        ),
+        actionLabel: context.tr(fr: 'Retour', en: 'Back'),
+        onAction: () => context.canPop() ? context.pop() : context.go(Routes.scenes),
+      );
+}
+
+/// Replaces the Save bar for members: the editor is read-only.
+class ReadOnlyEditorBar extends StatelessWidget {
+  const ReadOnlyEditorBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Row(
+        key: const Key('scenes-read-only'),
+        children: [
+          Icon(Icons.lock_outline, size: 18, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              context.tr(fr: 'Lecture seule : seuls les administrateurs peuvent modifier.', en: 'Read-only: only administrators can edit.'),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

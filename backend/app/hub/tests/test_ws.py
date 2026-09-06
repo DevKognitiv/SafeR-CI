@@ -226,3 +226,54 @@ def test_ws_unsubscribes_on_disconnect(tc, alice, home):
         assert ws.receive_json()["type"] == "hello"
         assert runtime.bus.subscriber_count == before + 1
     assert runtime.bus.subscriber_count == before
+
+
+# ----------------------------------------------------------------------------- membership revocation
+def add_member(tc: TestClient, owner: Dict[str, Any], home: Dict[str, Any], email: str) -> None:
+    response = tc.post(f"{PREFIX}/homes/{home['id']}/members", json={"email": email, "role": "member"}, headers=owner["headers"])
+    assert response.status_code == 201, response.text
+
+
+def test_ws_pinned_connection_is_closed_when_the_member_is_removed(tc, alice, home, devices):
+    bob = register(tc, "bob@safer.ci", "Bob")
+    add_member(tc, alice, home, "bob@safer.ci")
+    with tc.websocket_connect(f"{WS}?token={bob['token']}&home_id={home['id']}") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        assert tc.delete(f"{PREFIX}/homes/{home['id']}/members/{bob['user']['id']}", headers=alice["headers"]).status_code == 204
+        switch(tc, alice, devices["demo-plug-1"], True)
+        error = ws.receive_json()
+        assert error == {"type": "error", "detail": "Not a member of this home", "home_id": home["id"]}
+        with pytest.raises(WebSocketDisconnect) as info:
+            ws.receive_json()  # no "Membre retiré" notice, no device.state: the socket is closed instead
+        assert info.value.code == 4403
+
+
+def test_ws_all_homes_connection_stops_receiving_a_left_home(tc, alice, home, devices):
+    bob = register(tc, "bob@safer.ci", "Bob")
+    bob_home = create_home(tc, bob, "Chez Bob")
+    bob_devices = pair_demo(tc, bob_home["id"])
+    add_member(tc, alice, home, "bob@safer.ci")
+    with tc.websocket_connect(f"{WS}?token={bob['token']}") as ws:
+        assert ws.receive_json()["home_id"] is None
+        switch(tc, alice, devices["demo-plug-1"], True)
+        assert ws.receive_json()["home_id"] == home["id"]  # member: receives Alice's home
+        # Bob leaves Alice's home himself
+        assert tc.delete(f"{PREFIX}/homes/{home['id']}/members/{bob['user']['id']}", headers=bob["headers"]).status_code == 204
+        switch(tc, alice, devices["demo-plug-1"], False)
+        switch(tc, bob, bob_devices["demo-plug-1"], True)
+        frame = ws.receive_json()
+        assert frame["type"] == "device.state" and frame["home_id"] == bob_home["id"]  # Alice's frame was filtered out
+        ws.send_json({"type": "subscribe", "home_id": home["id"]})
+        assert ws.receive_json()["type"] == "error"
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}  # still connected
+
+
+def test_ws_deleted_home_closes_pinned_connections(tc, alice, home):
+    with tc.websocket_connect(f"{WS}?token={alice['token']}&home_id={home['id']}") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        assert tc.delete(f"{PREFIX}/homes/{home['id']}", headers=alice["headers"]).status_code == 204
+        assert ws.receive_json()["type"] == "error"
+        with pytest.raises(WebSocketDisconnect) as info:
+            ws.receive_json()
+        assert info.value.code == 4403

@@ -59,6 +59,7 @@ class FakeAjaxCloud:
         self.commands: List[Tuple[str, Dict[str, Any]]] = []
         self.login_status = 200
         self.hubs: List[Dict[str, Any]] = [HUB_SUMMARY]
+        self.hub: Dict[str, Any] = dict(HUB_DETAIL)  # mutable per test (arming state read back by refresh)
         self.groups_status = 404
         self.devices = {d["id"]: d for d in DEVICES}
 
@@ -95,7 +96,7 @@ class FakeAjaxCloud:
         if path == prefix:
             return httpx.Response(200, json=self.hubs)
         if path == f"{prefix}/{HUB_ID}":
-            return httpx.Response(200, json=HUB_DETAIL)
+            return httpx.Response(200, json=self.hub)
         if path == f"{prefix}/{HUB_ID}/groups":
             return httpx.Response(self.groups_status, json=[{"id": "g1", "groupName": "Rez-de-chaussée"}])
         if path == f"{prefix}/{HUB_ID}/devices":
@@ -321,7 +322,8 @@ async def test_arm_command_bodies(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ct
     assert await adapter.send_command(ref, "arm_mode", "armed_night", ctx) == {"arm_mode": "armed_night"}
     assert await adapter.send_command(ref, "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
     assert await adapter.send_command(ref, "arm_mode", "disarmed", ctx) == {"arm_mode": "disarmed", "alarm": False}
-    assert [body["command"] for _, body in cloud.arming] == ["ARM", "NIGHT_MODE_ON", "ARM", "DISARM"]
+    # armed_home is Ajax partial arming (Night Mode), never a full ARM (which would arm interior detectors)
+    assert [body["command"] for _, body in cloud.arming] == ["ARM", "NIGHT_MODE_ON", "NIGHT_MODE_ON", "DISARM"]
     assert all(body["ignoreProblems"] is True for _, body in cloud.arming)
     put = next(r for r in cloud.requests if r.method == "PUT")
     assert put.url.path == f"/api/user/{USER_ID}/hubs/{HUB_ID}/commands/arming"
@@ -334,20 +336,32 @@ async def test_arm_command_bodies(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ct
     assert exc.value.code == "unsupported"
 
 
-async def test_arm_home_uses_groups_in_group_mode(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ctx: AdapterContext):
+async def test_arm_home_is_night_mode_even_in_group_mode(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ctx: AdapterContext):
+    """Arming every group would be a full arm: group mode also uses Night Mode for armed_home."""
     ref = panel_ref()
     ref.config["groups"] = [{"id": "g1", "name": "RDC"}, {"id": "g2", "name": "Étage"}]
     ref.config["group_mode"] = True
     assert await adapter.send_command(ref, "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
     paths = [r.url.path for r in cloud.requests if r.method == "PUT"]
-    assert paths == [f"/api/user/{USER_ID}/hubs/{HUB_ID}/groups/g1/commands/arming", f"/api/user/{USER_ID}/hubs/{HUB_ID}/groups/g2/commands/arming"]
-    assert cloud.arming == [("g1", {"command": "ARM", "ignoreProblems": True}), ("g2", {"command": "ARM", "ignoreProblems": True})]
-    # When the group endpoint is unavailable the whole hub is armed instead (best effort)
-    cloud.groups_status = 404
-    ref.config["groups"] = [{"id": "missing", "name": "?"}]
-    cloud.arming.clear()
-    assert await adapter.send_command(ref, "arm_mode", "armed_home", ctx) == {"arm_mode": "armed_home"}
-    assert cloud.arming == [(HUB_ID, {"command": "ARM", "ignoreProblems": True})]
+    assert paths == [f"/api/user/{USER_ID}/hubs/{HUB_ID}/commands/arming"]
+    assert cloud.arming == [(HUB_ID, {"command": "NIGHT_MODE_ON", "ignoreProblems": True})]
+
+
+async def test_arm_home_round_trips_through_refresh(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ctx: AdapterContext):
+    """The hub reports NIGHT_MODE for both partial modes: refresh keeps the mode that was requested."""
+    ref = panel_ref()
+    for requested in ("armed_home", "armed_night", "armed_away", "disarmed"):
+        assert await adapter.send_command(ref, "arm_mode", requested, ctx) == {"arm_mode": requested, **({"alarm": False} if requested == "disarmed" else {})}
+        ref.state["arm_mode"] = requested
+        cloud.hub["state"] = {"armed_home": "NIGHT_MODE", "armed_night": "NIGHT_MODE", "armed_away": "ARMED", "disarmed": "DISARMED"}[requested]
+        assert (await adapter.refresh(ref, ctx)).state["arm_mode"] == requested
+    # A mode the hub changed on its own (keypad) still comes through
+    ref.state["arm_mode"] = "armed_away"
+    cloud.hub["state"] = "NIGHT_MODE"
+    assert (await adapter.refresh(ref, ctx)).state["arm_mode"] == "armed_night"
+    ref.state["arm_mode"] = "armed_home"
+    cloud.hub["state"] = "ARMED"
+    assert (await adapter.refresh(ref, ctx)).state["arm_mode"] == "armed_away"
 
 
 async def test_switch_command(adapter: AjaxAdapter, cloud: FakeAjaxCloud, ctx: AdapterContext):

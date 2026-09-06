@@ -388,3 +388,28 @@ async def test_scene_runner_direct_run_scene_source(hub_app, home, devices):
     assert ran[0].payload["source"] == "automation"
     message = next(m for m in await messages_of(hub_app, home["id"]) if m.title == "Scène exécutée: Nuit")
     assert "automatisation" in message.body
+
+
+# ----------------------------------------------------------------------------- crashed adapters
+async def test_run_scene_survives_a_crashing_adapter(client, auth, home, devices, hub_app, monkeypatch):
+    """A non-AdapterError from an adapter is reported per action; the route must not 500 (expired ORM rows)."""
+    plug = devices["demo-plug-1"]
+    scene = await create_scene(
+        client, auth, home, "Crash",
+        [{"type": "device_command", "device_id": plug["id"], "code": "switch", "value": True}, {"type": "notify", "title": "Après", "body": "ok"}],
+    )
+    adapter = registry.get("demo")
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("firmware parse error")
+
+    monkeypatch.setattr(adapter, "send_command", _boom)
+    response = await client.post(f"{PREFIX}/scenes/{scene['id']}/run", headers=auth["headers"])
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["scene_id"] == scene["id"] and body["name"] == "Crash" and body["ran_at"] is not None
+    assert body["results"][0]["status"] == "error" and body["results"][0]["error"] == "firmware parse error"
+    assert body["results"][1]["status"] == "ok" and body["summary"] == {"ok": 1, "error": 1, "skipped": 0}
+    titles = [m.title for m in await messages_of(hub_app, home["id"])]
+    assert "Après" in titles and any(t.startswith("Scène exécutée") for t in titles)
+    assert (await get_device(client, auth, plug["id"]))["state"]["switch"] is False

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/hub_client.dart';
 import '../config.dart';
@@ -87,3 +88,27 @@ final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeMo
 
 /// Set to false in widget tests to avoid opening real WebSockets.
 final realtimeEnabledProvider = Provider<bool>((ref) => true);
+
+/// Preference key of the "realtime alerts" toggle (Settings > Notifications).
+const String kRealtimeAlertsPrefKey = 'safer.me.realtime_alerts';
+
+/// User preference: should the app keep a live connection to the hub and
+/// surface alarms/events as they arrive? Stored on device; defaults to on.
+///
+/// Consumed by [realtimeActiveProvider] (`ws_provider.dart`), which gates the
+/// WebSocket and therefore every realtime consumer (devices, security, messages).
+class RealtimeAlertsNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(kRealtimeAlertsPrefKey) ?? true;
+  }
+
+  Future<void> set(bool enabled) async {
+    state = AsyncData(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kRealtimeAlertsPrefKey, enabled);
+  }
+}
+
+final realtimeAlertsProvider = AsyncNotifierProvider<RealtimeAlertsNotifier, bool>(RealtimeAlertsNotifier.new);

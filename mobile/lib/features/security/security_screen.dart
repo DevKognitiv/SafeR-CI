@@ -95,7 +95,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen> {
 
     final homeId = home.id;
     final securityAsync = ref.watch(securityProvider(homeId));
-    final unread = ref.watch(unreadCountProvider(homeId)).value;
+    final unread = ref.watch(unreadCountProvider(homeId)).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -172,7 +172,7 @@ class _SecurityBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final devices = ref.watch(devicesProvider(homeId)).value ?? const <Device>[];
+    final devices = ref.watch(devicesProvider(homeId)).valueOrNull ?? const <Device>[];
     final byId = {for (final d in devices) d.id: d};
     final panels = _live(security.panels, byId, devices.where((d) => d.category == 'alarm_panel'));
     final zones = _live(security.zones, byId, devices.where((d) => d.category == 'alarm_zone'));

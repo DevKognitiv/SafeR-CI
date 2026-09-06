@@ -482,8 +482,78 @@ async def test_device_webhook_url(client, auth, home, member):
     body = response.json()
     assert body["url"] == f"{PREFIX}/webhooks/generic/{pir['id']}?secret={body['secret']}"
     assert body["brand"] == "generic" and body["device_id"] == pir["id"] and body["integration_id"] is None
-    # stable across calls and persisted in the device config
+    # stable across calls, never part of the (member-visible, non-secret) device config
     assert (await client.get(f"{PREFIX}/devices/{pir['id']}/webhook", headers=headers)).json()["secret"] == body["secret"]
-    device = (await client.get(f"{PREFIX}/devices/{pir['id']}", headers=headers)).json()
-    assert device["config"]["webhook_secret"] == body["secret"]
+    for who in (headers, member["headers"]):
+        device = (await client.get(f"{PREFIX}/devices/{pir['id']}", headers=who)).json()
+        assert "webhook_secret" not in device["config"] and body["secret"] not in json.dumps(device)
+        listed = (await client.get(f"{PREFIX}/homes/{home['id']}/devices", headers=who)).json()
+        assert body["secret"] not in json.dumps(listed)
+        assert body["secret"] not in json.dumps((await client.get(f"{PREFIX}/homes/{home['id']}/security", headers=who)).json())
     assert (await client.get(f"{PREFIX}/devices/{pir['id']}/webhook", headers=member["headers"])).status_code == 403
+    assert (await client.post(f"{PREFIX}/devices/{pir['id']}/webhook/rotate", headers=member["headers"])).status_code == 403
+    # re-pairing the brand rewrites config but keeps the secret (the URL already handed out keeps working)
+    assert (await pair(client, headers, "demo", home["id"])).status_code == 201
+    assert (await client.get(f"{PREFIX}/devices/{pir['id']}/webhook", headers=headers)).json()["secret"] == body["secret"]
+    hook = await client.post(f"{PREFIX}/webhooks/generic/{pir['id']}?secret={body['secret']}", json={"state": {"battery": 55}})
+    assert hook.status_code == 200, hook.text
+    # rotation invalidates the previous URL
+    rotated = await client.post(f"{PREFIX}/devices/{pir['id']}/webhook/rotate", headers=headers)
+    assert rotated.status_code == 200 and rotated.json()["secret"] != body["secret"]
+    assert (await client.post(f"{PREFIX}/webhooks/generic/{pir['id']}?secret={body['secret']}", json={"state": {"battery": 54}})).status_code == 401
+    assert (await client.post(f"{PREFIX}/webhooks/generic/{pir['id']}?secret={rotated.json()['secret']}", json={"state": {"battery": 54}})).status_code == 200
+    # a legacy secret left in config by older releases is stripped from the API
+    runtime = client._transport.app.state.hub_runtime  # pylint: disable=protected-access
+    async with runtime.db.session() as session:
+        row = await session.get(Device, pir["id"])
+        row.config = {**(row.config or {}), "webhook_secret": "legacy-secret"}
+        await session.commit()
+    device = (await client.get(f"{PREFIX}/devices/{pir['id']}", headers=member["headers"])).json()
+    assert device["config"] == {"virtual": True} and "legacy-secret" not in json.dumps(device)
+
+
+# ----------------------------------------------------------------------------- SIA accounts are per home
+async def test_sia_account_cannot_be_paired_into_two_homes(client, auth, home):
+    """The SIA receiver pushes by account: a second home claiming the same account would receive its events."""
+    headers = auth["headers"]
+    other = (await client.post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=headers)).json()
+
+    async def pair_sia(home_id: str, account: str) -> httpx.Response:
+        return await client.post(
+            f"{PREFIX}/onboarding/ajax/pair",
+            json={"home_id": home_id, "method": "sia_receiver", "payload": {"account": account, "name": "Centrale"}}, headers=headers,
+        )
+
+    first = await pair_sia(home["id"], "12ab")
+    assert first.status_code == 201, first.text
+    assert first.json()["devices"][0]["external_id"] == "sia:12AB"
+    assert (await pair_sia(home["id"], "12AB")).status_code == 201  # re-pairing in the same home is fine
+    rejected = await pair_sia(other["id"], "12ab")
+    assert rejected.status_code == 400 and "12AB" in rejected.json()["detail"]
+    assert (await client.get(f"{PREFIX}/homes/{other['id']}/devices", headers=headers)).json() == []
+    assert (await pair_sia(other["id"], "ffff")).status_code == 201
+
+
+async def test_sia_account_binding_from_settings_is_enforced(home, auth):
+    """HUB_SIA_ACCOUNTS binds an account to a home: another home cannot pair it."""
+    app = create_app(settings=make_settings(HUB_SIA_ACCOUNTS=f"1234:{home['id']}"), database_url="sqlite+aiosqlite://", start_services=False)
+    runtime = app.state.hub_runtime
+    await runtime.start()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://hub") as http:
+            user = await register_user(http)
+            headers = {"Authorization": f"Bearer {user['token']}"}
+            mine = (await http.post(f"{PREFIX}/homes", json={"name": "Maison"}, headers=headers)).json()
+            response = await http.post(
+                f"{PREFIX}/onboarding/ajax/pair",
+                json={"home_id": mine["id"], "method": "sia_receiver", "payload": {"account": "1234"}}, headers=headers,
+            )
+            assert response.status_code == 400 and "HUB_SIA_ACCOUNTS" in response.json()["detail"]
+            response = await http.post(
+                f"{PREFIX}/onboarding/ajax/pair",
+                json={"home_id": mine["id"], "method": "sia_receiver", "payload": {"account": "abcd"}}, headers=headers,
+            )
+            assert response.status_code == 201, response.text
+    finally:
+        await runtime.stop()
+        set_runtime(None)

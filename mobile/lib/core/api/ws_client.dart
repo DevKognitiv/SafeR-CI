@@ -22,6 +22,10 @@ class HubSocket {
   bool _closed = false;
   bool _connected = false;
 
+  /// False until the first connection outcome (success or failure) has been
+  /// reported on [status], so an initial failure is observable too.
+  bool _statusReported = false;
+
   Stream<HubEvent> get events => _controller.stream;
   Stream<bool> get status => _statusController.stream;
   bool get isConnected => _connected;
@@ -32,6 +36,9 @@ class HubSocket {
     try {
       final channel = WebSocketChannel.connect(Uri.parse(url));
       _channel = channel;
+      // A failed handshake is reported through the stream's onError below;
+      // swallow the `ready` rejection so it is not an unhandled zone error.
+      channel.ready.then((_) {}, onError: (_) {});
       _subscription = channel.stream.listen(_onData, onError: (_) => _scheduleReconnect(), onDone: _scheduleReconnect, cancelOnError: true);
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(pingInterval, (_) => send({'type': 'ping'}));
@@ -65,7 +72,8 @@ class HubSocket {
   }
 
   void _setConnected(bool value) {
-    if (_connected == value) return;
+    if (_statusReported && _connected == value) return;
+    _statusReported = true;
     _connected = value;
     if (!_statusController.isClosed) _statusController.add(value);
   }

@@ -5,13 +5,25 @@ import 'fake_hub_client.dart';
 
 /// FakeHubClient with mutable rooms (the shared fake has no room CRUD) and an optional "no home" mode.
 class HomeFakeHubClient extends FakeHubClient {
-  HomeFakeHubClient({this.noHomes = false, this.weatherAvailable = true});
+  HomeFakeHubClient({this.noHomes = false, this.weatherAvailable = true, this.role = 'owner'});
 
   /// When true, the user has no home at all.
   final bool noHomes;
 
   /// When false, the weather endpoint reports `available: false`.
   final bool weatherAvailable;
+
+  /// Role of the signed-in user in the demo home.
+  final String role;
+
+  /// When true, GET /homes/{id}/devices fails with a network error.
+  bool failDevices = false;
+
+  /// When true, GET /homes/{id}/weather fails with a 502.
+  bool failWeather = false;
+
+  /// When true, GET /homes/{id}/messages/unread-count fails with a 503.
+  bool failUnread = false;
 
   List<Room> rooms_ = List.of(FakeHubClient.demoRooms);
   final List<List<String>> reorders = [];
@@ -26,7 +38,14 @@ class HomeFakeHubClient extends FakeHubClient {
   @override
   Future<List<Device>> devices(String homeId, {String? roomId, String? category, String? brand}) {
     devicesCalls += 1;
+    if (failDevices) throw ApiException('Impossible de joindre le hub', status: null);
     return super.devices(homeId, roomId: roomId, category: category, brand: brand);
+  }
+
+  @override
+  Future<UnreadCount> unreadCount(String homeId) async {
+    if (failUnread) throw ApiException('hub down', status: 503);
+    return super.unreadCount(homeId);
   }
 
   @override
@@ -36,7 +55,23 @@ class HomeFakeHubClient extends FakeHubClient {
       return [];
     }
     final base = await super.homes();
-    return [for (final h in base) h.copyWith(rooms: rooms_)];
+    return [
+      for (final h in base)
+        Home(
+          id: h.id,
+          name: h.name,
+          lat: h.lat,
+          lon: h.lon,
+          address: h.address,
+          securityMode: h.securityMode,
+          alarmActive: h.alarmActive,
+          role: role,
+          rooms: rooms_,
+          memberCount: h.memberCount,
+          deviceCount: h.deviceCount,
+          createdAt: h.createdAt,
+        ),
+    ];
   }
 
   @override
@@ -77,6 +112,7 @@ class HomeFakeHubClient extends FakeHubClient {
 
   @override
   Future<Weather> weather(String homeId) async {
+    if (failWeather) throw ApiException('boom', status: 502);
     if (!weatherAvailable) return const Weather(available: false);
     return super.weather(homeId);
   }

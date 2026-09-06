@@ -16,6 +16,10 @@ from app.hub.models import Device, DeviceEvent, Home, Integration, Message, utcn
 
 logger = logging.getLogger("safer.hub.devices")
 
+# One-way panels reporting to the SIA receiver: their account must belong to exactly one home.
+SIA_PROTOCOL = "sia_dc09"
+SIA_PREFIX = "sia:"
+
 # Which sensor codes trip the software alarm in each armed mode (Tuya "Security" behaviour)
 ARMED_TRIGGERS = {
     "armed_away": {"contact", "motion", "smoke", "gas", "water_leak", "co", "tamper"},
@@ -81,6 +85,7 @@ class DeviceService:
             capabilities=list(device.capabilities or []),
             name=device.name,
             integration_id=device.integration_id,
+            home_id=device.home_id,
         )
 
     async def ref_for(self, session: AsyncSession, device: Device) -> DeviceRef:
@@ -127,6 +132,9 @@ class DeviceService:
 
         selected = set(selected_external_ids) if selected_external_ids else None
         drafts = [d for d in result.devices if selected is None or d.external_id in selected or d.parent_external_id is None and _has_selected_child(d, result.devices, selected)]
+        for draft in drafts:
+            if draft.protocol == SIA_PROTOCOL:
+                await self._check_sia_account(session, home_id, brand, draft.external_id)
         # Parents first so children can resolve parent_id
         drafts.sort(key=lambda d: 0 if d.parent_external_id is None else 1)
         by_external: Dict[str, Device] = {}
@@ -171,12 +179,29 @@ class DeviceService:
             await session.flush()
             by_external[device.external_id] = device
             devices.append(device)
-            if created:
-                await self.runtime.bus.publish(
-                    ev.HubEvent(ev.DEVICE_ADDED, home_id=home_id, device_id=device.id, payload={"device": _serialize_device(device)})
-                )
+            await self.runtime.bus.publish(
+                ev.HubEvent(ev.DEVICE_ADDED if created else ev.DEVICE_UPDATED, home_id=home_id, device_id=device.id,
+                            payload={"device": _serialize_device(device)})
+            )
         await session.commit()
         return devices, integration
+
+    async def _check_sia_account(self, session: AsyncSession, home_id: str, brand: str, external_id: str) -> None:
+        """A SIA account is pushed by external id only: refuse to bind it to a second home.
+
+        ``HUB_SIA_ACCOUNTS`` (account -> home) wins when set; otherwise the first home to pair the account keeps it.
+        """
+        account = external_id[len(SIA_PREFIX):].upper() if external_id.startswith(SIA_PREFIX) else external_id.upper()
+        bound = (getattr(self.runtime.settings, "sia_accounts", None) or {}).get(account)
+        if bound and bound != home_id:
+            raise AdapterError(f"Le compte SIA {account} est réservé à un autre domicile (HUB_SIA_ACCOUNTS)", "invalid_input")
+        other = (
+            await session.execute(
+                select(Device.id).where(Device.brand == brand, Device.external_id == external_id, Device.home_id != home_id).limit(1)
+            )
+        ).first()
+        if other is not None:
+            raise AdapterError(f"Le compte SIA {account} est déjà utilisé par un autre domicile", "invalid_input")
 
     # ----------------------------------------------------------------- state
     async def apply_state(
@@ -199,8 +224,12 @@ class DeviceService:
         if online is not None:
             device.online = online
         device.state = new_state
-        device.last_seen_at = utcnow()
+        if online is not False:
+            # An unreachable/offline report is not a contact with the device: keep the last real sighting.
+            device.last_seen_at = utcnow()
 
+        # Bus events are published only after the commit so clients never see rows that do not exist.
+        pending: List[ev.HubEvent] = []
         recorded: List[DeviceEvent] = []
         for code, value in changed.items():
             rule = NOTABLE_CODES.get(code)
@@ -216,7 +245,7 @@ class DeviceService:
             if rule["kind"] in ("alarm", "home") and rule["when"] is not None:
                 await self.create_message(
                     session, device.home_id, rule["kind"], f"{rule['title']} — {device.name}",
-                    _describe(code, value), device_id=device.id, severity=rule["severity"], publish=False,
+                    _describe(code, value), device_id=device.id, severity=rule["severity"], pending=pending,
                 )
         if online is not None and was_online != online:
             event = DeviceEvent(device_id=device.id, home_id=device.home_id, type="online", payload={"value": online})
@@ -225,10 +254,10 @@ class DeviceService:
             if not online:
                 await self.create_message(
                     session, device.home_id, "notice", f"Appareil hors ligne — {device.name}",
-                    "L'appareil ne répond plus.", device_id=device.id, severity="warning", publish=False,
+                    "L'appareil ne répond plus.", device_id=device.id, severity="warning", pending=pending,
                 )
         await session.flush()
-        await self._evaluate_security(session, device, changed)
+        await self._evaluate_security(session, device, changed, pending)
         await session.commit()
 
         bus = self.runtime.bus
@@ -242,10 +271,17 @@ class DeviceService:
                             payload={"event": {"id": event.id, "type": event.type, "payload": event.payload,
                                                "created_at": event.created_at.isoformat() if event.created_at else None}})
             )
+        for pending_event in pending:
+            await bus.publish(pending_event)
         return recorded
 
-    async def _evaluate_security(self, session: AsyncSession, device: Device, changed: Dict[str, Any]) -> None:
-        """Software alarm panel: trip the home alarm when armed sensors fire, mirror hardware panels."""
+    async def _evaluate_security(
+        self, session: AsyncSession, device: Device, changed: Dict[str, Any], pending: List[ev.HubEvent]
+    ) -> None:
+        """Software alarm panel: trip the home alarm when armed sensors fire, mirror hardware panels.
+
+        Bus events are appended to ``pending`` (published by ``apply_state`` after the commit).
+        """
         home = await session.get(Home, device.home_id)
         if home is None:
             return
@@ -256,25 +292,35 @@ class DeviceService:
             if "arm_mode" in changed and changed["arm_mode"] in ARMED_TRIGGERS and changed["arm_mode"] != home.security_mode:
                 home.security_mode = changed["arm_mode"]
                 home.security_changed_at = utcnow()
-                await self.runtime.bus.publish(
+                pending.append(
                     ev.HubEvent(ev.SECURITY_MODE, home_id=home.id, payload={"mode": home.security_mode, "source": device.id})
                 )
+            if changed.get("arm_mode") == "disarmed" and not triggered and (home.alarm_active or home.alarm_device_id):
+                # Disarming at the keypad acknowledges the software alarm, like ``set_security_mode`` does.
+                previous = home.alarm_device_id
+                home.alarm_active = False
+                home.alarm_device_id = None
+                await self.create_message(
+                    session, home.id, "notice", "Alarme acquittée", f"L'alarme a été acquittée depuis {device.name}.",
+                    device_id=previous, severity="info", pending=pending,
+                )
+                pending.append(ev.HubEvent(ev.SECURITY_ALARM, home_id=home.id, device_id=previous, payload={"active": False}))
         else:
             codes = ARMED_TRIGGERS.get(home.security_mode, set())
             for code in codes:
                 if changed.get(code) is True and device.category != "alarm_zone" or (device.category == "alarm_zone" and changed.get("alarm") is True):
                     triggered = True
                     break
-        if triggered and not home.alarm_active:
+        # ``alarm_device_id`` (not ``alarm_active``) gates the record: an SOS-only alarm (device None) must not
+        # hide a real sensor trip, while a second trip during a device alarm does not spam.
+        if triggered and home.alarm_device_id is None:
             home.alarm_active = True
             home.alarm_device_id = device.id
             await self.create_message(
                 session, home.id, "alarm", f"🚨 Alarme — {device.name}", "Une alarme a été déclenchée dans votre domicile.",
-                device_id=device.id, severity="critical", publish=True,
+                device_id=device.id, severity="critical", pending=pending,
             )
-            await self.runtime.bus.publish(
-                ev.HubEvent(ev.SECURITY_ALARM, home_id=home.id, device_id=device.id, payload={"active": True})
-            )
+            pending.append(ev.HubEvent(ev.SECURITY_ALARM, home_id=home.id, device_id=device.id, payload={"active": True}))
 
     async def create_message(
         self,
@@ -286,18 +332,24 @@ class DeviceService:
         device_id: Optional[str] = None,
         severity: str = "info",
         publish: bool = True,
+        pending: Optional[List[ev.HubEvent]] = None,
     ) -> Message:
-        """Add a message-center entry and publish ``message.new``."""
+        """Add a message-center entry and publish ``message.new``.
+
+        With ``pending`` the event is appended to that list instead of being published, so the caller can
+        publish it once the transaction is committed. ``publish=False`` without ``pending`` publishes nothing.
+        """
         message = Message(home_id=home_id, kind=kind, title=title, body=body, device_id=device_id, severity=severity)
         session.add(message)
         await session.flush()
         payload = {"message": {"id": message.id, "home_id": home_id, "kind": kind, "title": title, "body": body,
                                "device_id": device_id, "severity": severity, "read": False,
                                "created_at": (message.created_at or utcnow()).isoformat()}}
-        if publish:
-            await self.runtime.bus.publish(ev.HubEvent(ev.MESSAGE_NEW, home_id=home_id, device_id=device_id, payload=payload))
-        else:
-            self.runtime.bus.publish_nowait(ev.HubEvent(ev.MESSAGE_NEW, home_id=home_id, device_id=device_id, payload=payload))
+        event = ev.HubEvent(ev.MESSAGE_NEW, home_id=home_id, device_id=device_id, payload=payload)
+        if pending is not None:
+            pending.append(event)
+        elif publish:
+            await self.runtime.bus.publish(event)
         return message
 
     # ----------------------------------------------------------------- adapter operations
@@ -366,12 +418,37 @@ class DeviceService:
         await self.runtime.bus.publish(ev.HubEvent(ev.DEVICE_REMOVED, home_id=home_id, device_id=device_id))
 
     # ----------------------------------------------------------------- push from adapters
-    async def handle_push(self, brand: str, external_id: str, event_type: str, payload: Dict[str, Any]) -> None:
-        """Entry point for adapter subscriptions (opens its own session)."""
+    async def handle_push(
+        self,
+        brand: str,
+        external_id: str,
+        event_type: str,
+        payload: Dict[str, Any],
+        *,
+        home_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        integration_id: Optional[str] = None,
+    ) -> None:
+        """Entry point for adapter subscriptions, webhooks and the SIA receiver (opens its own session).
+
+        ``(brand, external_id)`` is only unique per home, so callers pass the scope they authenticated:
+        ``device_id`` (generic webhook), ``integration_id``/``home_id`` (brand webhooks, push subscriptions,
+        SIA accounts). An unscoped push is applied to every match but logged, because it can cross homes.
+        """
+        query = select(Device).where(Device.brand == brand, Device.external_id == external_id)
+        if device_id is not None:
+            query = query.where(Device.id == device_id)
+        if integration_id is not None:
+            query = query.where(Device.integration_id == integration_id)
+        if home_id is not None:
+            query = query.where(Device.home_id == home_id)
         async with self.runtime.db.session() as session:
-            devices = (
-                await session.execute(select(Device).where(Device.brand == brand, Device.external_id == external_id))
-            ).scalars().all()
+            devices = (await session.execute(query)).scalars().all()
+            if len(devices) > 1:
+                logger.warning(
+                    "Unscoped push for %s/%s matches %d devices in different homes; applying to all of them",
+                    brand, external_id, len(devices),
+                )
             for device in devices:
                 if event_type == "state":
                     await self.apply_state(session, device, payload.get("state") or {}, online=payload.get("online"))

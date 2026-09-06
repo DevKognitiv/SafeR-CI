@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.hub import events as ev
 from app.hub.adapters.base import AdapterError
 from app.hub.capabilities import SECURITY_MODES
+from app.hub.db import rollback_and_restore
 from app.hub.models import Device, Home, Scene, utcnow
 from app.hub.services.device_service import DeviceService
 
@@ -87,9 +88,10 @@ class SceneRunner:
             except Exception as exc:  # pylint: disable=broad-except
                 result.update(status="error", error=str(exc) or exc.__class__.__name__)
                 logger.exception("Action %d (%s) crashed for home %s", index, atype, home_id)
-                # A crashed action may have left the session in a failed transaction: reset it.
+                # A crashed action may have left the session in a failed transaction: reset it without
+                # expiring the caller's ORM objects (scene, user...).
                 try:
-                    await session.rollback()
+                    await rollback_and_restore(session)
                 except Exception:  # pylint: disable=broad-except
                     logger.debug("Session rollback after a failed action did not succeed", exc_info=True)
             results.append(result)

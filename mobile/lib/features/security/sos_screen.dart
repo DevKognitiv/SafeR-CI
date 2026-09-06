@@ -31,6 +31,10 @@ class _SosScreenState extends ConsumerState<SosScreen> {
   _SosPhase _phase = _SosPhase.idle;
   String? _error;
   String? _resolvingId;
+
+  /// The alert the hub recorded for the current "sent" state (tells whether
+  /// responders were actually reached and whether a position was attached).
+  SosAlert? _sentAlert;
   final _note = TextEditingController();
 
   @override
@@ -56,11 +60,14 @@ class _SosScreenState extends ConsumerState<SosScreen> {
     setState(() => _phase = _SosPhase.sending);
     try {
       final note = _note.text.trim();
-      await ref.read(securityProvider(homeId).notifier).raiseSos(lat: point?.lat, lon: point?.lon, note: note.isEmpty ? null : note);
+      final alert = await ref.read(securityProvider(homeId).notifier).raiseSos(lat: point?.lat, lon: point?.lon, note: note.isEmpty ? null : note);
       ref.invalidate(sosAlertsProvider(homeId));
       if (!mounted) return;
-      setState(() => _phase = _SosPhase.sent);
-      showSnack(context, context.tr(fr: 'Alerte SOS envoyée', en: 'SOS alert sent'));
+      setState(() {
+        _phase = _SosPhase.sent;
+        _sentAlert = alert;
+      });
+      showSnack(context, alert.forwarded ? context.tr(fr: 'Alerte SOS transmise aux secours', en: 'SOS alert sent to responders') : context.tr(fr: 'Alerte SOS enregistrée', en: 'SOS alert recorded'));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -88,9 +95,26 @@ class _SosScreenState extends ConsumerState<SosScreen> {
         _SosPhase.idle => context.tr(fr: 'Appuyez sur le bouton en cas d\'urgence', en: 'Press the button in an emergency'),
         _SosPhase.locating => context.tr(fr: 'Localisation...', en: 'Locating...'),
         _SosPhase.sending => context.tr(fr: 'Envoi de l\'alerte...', en: 'Sending the alert...'),
-        _SosPhase.sent => context.tr(fr: '✅ Alerte envoyée aux secours', en: '✅ Alert sent to emergency services'),
+        // Only claim responders were reached when the hub actually forwarded the alert.
+        _SosPhase.sent => (_sentAlert?.forwarded ?? false)
+            ? context.tr(fr: '✅ Alerte transmise aux secours', en: '✅ Alert sent to emergency services')
+            : context.tr(fr: '✅ Alerte enregistrée sur le hub', en: '✅ Alert recorded on the hub'),
         _SosPhase.failed => context.tr(fr: 'Échec de l\'envoi, réessayez', en: 'Sending failed, try again'),
       };
+
+  /// What actually happened, so the user knows whether to call the numbers below.
+  String _sentSummary(BuildContext context) {
+    final alert = _sentAlert;
+    final hasPosition = alert?.lat != null && alert?.lon != null;
+    final forwarded = alert?.forwarded ?? false;
+    final position = hasPosition
+        ? context.tr(fr: 'Votre position a été jointe à l\'alerte.', en: 'Your location was attached to the alert.')
+        : context.tr(fr: 'Position non disponible : indiquez votre adresse aux secours.', en: 'Location unavailable: give responders your address.');
+    final reach = forwarded
+        ? context.tr(fr: 'Les secours SafeR ont été prévenus. Restez en sécurité.', en: 'SafeR responders have been notified. Stay safe.')
+        : context.tr(fr: 'Le hub a déclenché l\'alarme mais n\'est pas relié aux secours : appelez un numéro d\'urgence ci-dessous.', en: 'The hub raised the alarm but is not linked to responders: call an emergency number below.');
+    return '$reach $position';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,13 +197,15 @@ class _SosScreenState extends ConsumerState<SosScreen> {
             if (sent) ...[
               const SizedBox(height: 6),
               Text(
-                context.tr(fr: 'Restez en sécurité. Les secours et vos proches ont reçu votre position.', en: 'Stay safe. Responders and your contacts received your location.'),
+                _sentSummary(context),
+                key: const Key('sos-sent-summary'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
               ),
               TextButton.icon(
                 onPressed: () => setState(() {
                   _phase = _SosPhase.idle;
+                  _sentAlert = null;
                   _note.clear();
                 }),
                 icon: const Icon(Icons.refresh, size: 18),

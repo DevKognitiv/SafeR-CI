@@ -809,11 +809,14 @@ class HomeAssistantAdapter(BrandAdapter):
             return None
         url, token = self.connection_from_device(device)
         entity_id = self.entity_id_for(device)
-        return StreamInfo(
-            url=f"{url}/api/camera_proxy_stream/{entity_id}",
-            type="mjpeg",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        # The long-lived token is the whole integration's admin credential: it must never leave the hub.
+        # Home Assistant issues a rotating per-camera ``access_token`` accepted as ``?token=`` by the proxy.
+        async with ctx.http() as http:
+            entity = await HomeAssistantClient(url, token, http).state(entity_id)
+        access_token = str((entity.get("attributes") or {}).get("access_token") or "").strip()
+        if not access_token:
+            return None
+        return StreamInfo(url=f"{url}/api/camera_proxy_stream/{quote(entity_id, safe='.')}?token={quote(access_token, safe='')}", type="mjpeg")
 
     async def snapshot(self, device: DeviceRef, ctx: AdapterContext) -> Optional[bytes]:
         if device.category not in ("camera", "doorbell", "nvr"):

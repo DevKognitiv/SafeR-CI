@@ -565,10 +565,14 @@ async def test_stream_and_snapshot():
     ctx = ctx_for(server)
 
     stream = await adapter.stream(refs["camera.entree"], "main", ctx)
-    assert stream.url == f"{URL}/api/camera_proxy_stream/camera.entree"
-    assert stream.type == "mjpeg"
-    assert stream.headers == {"Authorization": f"Bearer {TOKEN}"}
+    # The per-camera rotating token HA exposes on the entity is used; the long-lived (admin) token never leaves the hub
+    assert stream.url == f"{URL}/api/camera_proxy_stream/camera.entree?token=abc123"
+    assert stream.type == "mjpeg" and stream.headers == {} and stream.username is None and stream.password is None
+    assert TOKEN not in stream.model_dump_json()
     assert await adapter.stream(refs["light.salon"], "main", ctx) is None
+    # A camera without an access_token attribute has no stream the app can open without the admin token
+    server.states["camera.entree"]["attributes"].pop("access_token")
+    assert await adapter.stream(refs["camera.entree"], "main", ctx) is None
 
     image = await adapter.snapshot(refs["camera.entree"], ctx)
     assert image == b"\xff\xd8\xff\xe0JPEG-HA"
@@ -681,3 +685,40 @@ async def test_websocket_unreachable_retries_and_stops_cleanly():
     # devices without an integration are skipped; nothing to subscribe to -> None
     orphan = DeviceRef(id="x", external_id="light.x", brand=BRAND_ID, protocol=PROTOCOL, category="light")
     assert await adapter.subscribe([orphan], AdapterContext()) is None
+
+
+# =============================================================================== API (member access)
+async def test_member_stream_never_exposes_the_long_lived_token():
+    """GET /devices/{id}/stream is open to every member: the integration token must not be in the answer."""
+    from app.hub.app import create_app  # pylint: disable=import-outside-toplevel
+    from app.hub.runtime import set_runtime  # pylint: disable=import-outside-toplevel
+    from app.hub.tests.conftest import PREFIX, make_settings, register_user  # pylint: disable=import-outside-toplevel
+
+    server = FakeHomeAssistant()
+    app = create_app(settings=make_settings(), database_url="sqlite+aiosqlite://", transport=server.transport(), start_services=False)
+    runtime = app.state.hub_runtime
+    await runtime.start()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://hub") as http:
+            owner = await register_user(http)
+            owner_h = {"Authorization": f"Bearer {owner['token']}"}
+            home = (await http.post(f"{PREFIX}/homes", json={"name": "Maison"}, headers=owner_h)).json()
+            member = await register_user(http, email="bob@safer.ci", name="Bob")
+            member_h = {"Authorization": f"Bearer {member['token']}"}
+            assert (await http.post(f"{PREFIX}/homes/{home['id']}/members", json={"email": "bob@safer.ci", "role": "member"}, headers=owner_h)).status_code == 201
+            paired_ = await http.post(
+                f"{PREFIX}/onboarding/{BRAND_ID}/pair",
+                json={"home_id": home["id"], "method": METHOD_TOKEN, "payload": payload(), "selected_external_ids": ["camera.entree"]},
+                headers=owner_h,
+            )
+            assert paired_.status_code == 201, paired_.text
+            assert TOKEN not in paired_.text
+            camera = paired_.json()["devices"][0]
+            response = await http.get(f"{PREFIX}/devices/{camera['id']}/stream", headers=member_h)
+            assert response.status_code == 200, response.text
+            assert TOKEN not in response.text
+            assert response.json()["url"] == f"{URL}/api/camera_proxy_stream/camera.entree?token=abc123"
+            assert TOKEN not in (await http.get(f"{PREFIX}/devices/{camera['id']}", headers=member_h)).text
+    finally:
+        await runtime.stop()
+        set_runtime(None)

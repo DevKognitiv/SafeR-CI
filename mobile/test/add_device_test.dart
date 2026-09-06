@@ -59,6 +59,30 @@ class _NoHomeClient extends FakeHubClient {
   Future<List<Home>> homes() async => [];
 }
 
+/// Plain member of the demo home; counts discover/pair calls (must stay at zero).
+class _MemberClient extends FakeHubClient {
+  int discoverCalls = 0;
+  int pairCalls = 0;
+
+  @override
+  Future<List<Home>> homes() async => [
+        for (final h in await super.homes())
+          Home(id: h.id, name: h.name, lat: h.lat, lon: h.lon, address: h.address, securityMode: h.securityMode, alarmActive: h.alarmActive, role: 'member', rooms: h.rooms, memberCount: h.memberCount, deviceCount: h.deviceCount),
+      ];
+
+  @override
+  Future<List<DiscoveredDevice>> discover(String brandId, {required String homeId, required String method, Map<String, dynamic> payload = const {}}) {
+    discoverCalls += 1;
+    return super.discover(brandId, homeId: homeId, method: method, payload: payload);
+  }
+
+  @override
+  Future<({List<Device> devices, String? integrationId, String message})> pair(String brandId, {required String homeId, required String method, Map<String, dynamic> payload = const {}, String? roomId, List<String>? selectedExternalIds}) {
+    pairCalls += 1;
+    return super.pair(brandId, homeId: homeId, method: method, payload: payload, roomId: roomId, selectedExternalIds: selectedExternalIds);
+  }
+}
+
 /// Pairing takes a while, so the progress view is visible for a frame or two.
 class _SlowPairClient extends FakeHubClient {
   @override
@@ -368,6 +392,21 @@ void main() {
       expect(find.text(kHomesStubText), findsOneWidget);
     });
 
+    testWidgets('members are stopped before the form: admin-only state, no discover/pair call', (tester) async {
+      final client = _MemberClient();
+      await pumpAddDevice(tester, initialLocation: Routes.pair('hikvision'), client: client);
+      expect(find.byKey(const Key('add-device-admin-only')), findsOneWidget);
+      expect(find.text('Réservé aux administrateurs'), findsOneWidget);
+      expect(find.byType(PairingForm), findsNothing);
+      expect(client.discoverCalls, 0);
+      expect(client.pairCalls, 0);
+
+      // The catalogue deep link is gated too.
+      await pumpAddDevice(tester, client: _MemberClient());
+      expect(find.byKey(const Key('add-device-admin-only')), findsOneWidget);
+      expect(brandCard('tuya'), findsNothing);
+    });
+
     testWidgets('falls back to a direct brand fetch when the catalogue fails', (tester) async {
       await pumpAddDevice(tester, initialLocation: Routes.pair('hikvision'), client: _NoCatalogueClient());
       expect(find.text('Hikvision'), findsOneWidget);
@@ -452,7 +491,11 @@ void main() {
       expect(pairingErrorCode(ApiException('x', status: null)), 'unreachable');
       expect(pairingErrorCode(ApiException('x', status: 401)), 'auth_failed');
       expect(pairingErrorCode(ApiException('x', status: 400)), 'invalid_input');
+      expect(pairingErrorCode(ApiException('x', status: 403)), 'forbidden');
       expect(pairingErrorCode(StateError('x')), isNull);
+
+      await pumpApp(tester, Scaffold(body: PairingErrorCard(error: ApiException('Insufficient role for this home', status: 403), onRetry: () {})));
+      expect(find.textContaining('Seuls les administrateurs et le propriétaire'), findsOneWidget);
     });
 
     testWidgets('MatterSummaryCard renders the vendor/product/discriminator line', (tester) async {

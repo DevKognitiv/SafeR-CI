@@ -152,6 +152,7 @@ class Device(Base):
     state: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     config: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     credentials_enc: Mapped[Optional[str]] = mapped_column(Text)
+    webhook_secret: Mapped[Optional[str]] = mapped_column(String(64))  # generic webhook; never serialised
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

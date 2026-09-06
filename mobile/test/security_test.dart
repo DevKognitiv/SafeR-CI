@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +15,7 @@ import 'package:safer_ci/features/security/widgets/location_service.dart';
 import 'package:safer_ci/features/security/widgets/phone_dialer.dart';
 import 'package:safer_ci/features/security/widgets/sos_alert_list.dart';
 import 'package:safer_ci/features/security/widgets/sos_button.dart';
+import 'package:safer_ci/features/security/widgets/security_hero_card.dart';
 
 import 'helpers/fake_hub_client.dart';
 import 'helpers/pump_app.dart';
@@ -188,6 +191,55 @@ void main() {
       expect(find.byType(ArmModeButton), findsNothing);
     });
 
+    testWidgets('a failed device list still renders the security body from the snapshot', (tester) async {
+      await pumpSecurity(tester, const SecurityScreen(), client: SecurityFakeHubClient()..failDevices = true);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ArmModeButton), findsNWidgets(4));
+      expect(find.byType(SecurityHeroCard), findsOneWidget);
+      expect(find.text('Zone salon'), findsOneWidget);
+    });
+
+    testWidgets('a failed unread-count request keeps the app bar', (tester) async {
+      await pumpSecurity(tester, const SecurityScreen(), client: SecurityFakeHubClient()..failUnread = true);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Sécurité'), findsOneWidget);
+      expect(find.byType(ArmModeButton), findsNWidgets(4));
+    });
+
+    /// Security provider whose first fetch failed (value-less AsyncError), with an injectable event stream.
+    Future<({ProviderContainer container, SecurityFakeHubClient client, StreamController<HubEvent> events})> pumpFailedSecurity(WidgetTester tester) async {
+      final client = SecurityFakeHubClient()..failSecurity = true;
+      final events = StreamController<HubEvent>.broadcast();
+      addTearDown(events.close);
+      final container = await pumpApp(tester, const SizedBox(), client: client, overrides: [
+        hubEventsProvider.overrideWith((ref, homeId) => events.stream),
+      ]);
+      await container.read(authProvider.notifier).restore();
+      final sub = container.listen(securityProvider(FakeHubClient.homeId), (_, __) {});
+      addTearDown(sub.close);
+      await settle(tester);
+      expect(container.read(securityProvider(FakeHubClient.homeId)), isA<AsyncError<SecurityState>>());
+      expect(container.read(securityProvider(FakeHubClient.homeId)).hasValue, isFalse);
+      return (container: container, client: client, events: events);
+    }
+
+    testWidgets('setMode while the security fetch failed still reaches the hub and recovers the provider', (tester) async {
+      final r = await pumpFailedSecurity(tester);
+      r.client.failSecurity = false;
+      await r.container.read(securityProvider(FakeHubClient.homeId).notifier).setMode('armed_away');
+      expect(r.client.securityMode, 'armed_away');
+      expect(r.container.read(securityProvider(FakeHubClient.homeId)).valueOrNull?.mode, 'armed_away');
+    });
+
+    testWidgets('a realtime frame after a failed security fetch triggers the self-heal refresh', (tester) async {
+      final r = await pumpFailedSecurity(tester);
+      r.client.failSecurity = false;
+      r.events.add(HubEvent.fromJson({'type': 'device.state', 'home_id': FakeHubClient.homeId, 'device_id': 'dev-door', 'state': {'contact': true}, 'online': true}));
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(r.container.read(securityProvider(FakeHubClient.homeId)).valueOrNull?.mode, 'disarmed');
+    });
+
     testWidgets('shows an error state with retry when the security call fails', (tester) async {
       final client = SecurityFakeHubClient()..failSecurity = true;
       await pumpSecurity(tester, const SecurityScreen(), client: client);
@@ -209,10 +261,14 @@ void main() {
       expect(find.text("Appuyez sur le bouton en cas d'urgence"), findsOneWidget);
       expect(find.text('Aucune alerte récente'), findsOneWidget);
 
+      r.client.sosForwarded = true;
       await tester.enterText(find.byType(TextField), 'Intrusion au portail');
       await tester.tap(find.byType(SosButton));
       await settle(tester);
-      expect(find.text('✅ Alerte envoyée aux secours'), findsOneWidget);
+      expect(find.text('✅ Alerte transmise aux secours'), findsOneWidget);
+      final summary = tester.widget<Text>(find.byKey(const Key('sos-sent-summary'))).data!;
+      expect(summary, contains('Les secours SafeR ont été prévenus'));
+      expect(summary, contains('Votre position a été jointe'));
       expect(r.client.sosCalls, hasLength(1));
       expect(r.client.sosCalls.single.lat, 5.36);
       expect(r.client.sosCalls.single.lon, -4.0);
@@ -230,7 +286,12 @@ void main() {
       final r = await pumpSecurity(tester, const SosScreen(), initialLocation: '/security/sos', location: null);
       await tester.tap(find.byType(SosButton));
       await settle(tester);
-      expect(find.text('✅ Alerte envoyée aux secours'), findsOneWidget);
+      // Not forwarded by the hub (no SAFER_INCIDENTS_URL) and no fix: say so instead of claiming responders have the position.
+      expect(find.text('✅ Alerte enregistrée sur le hub'), findsOneWidget);
+      expect(find.text('✅ Alerte transmise aux secours'), findsNothing);
+      final summary = tester.widget<Text>(find.byKey(const Key('sos-sent-summary'))).data!;
+      expect(summary, contains("n'est pas relié aux secours"));
+      expect(summary, contains('Position non disponible : indiquez votre adresse aux secours.'));
       expect(r.client.sosCalls.single.lat, isNull);
       expect(r.client.sosCalls.single.lon, isNull);
       expect(r.client.sosCalls.single.note, isNull);

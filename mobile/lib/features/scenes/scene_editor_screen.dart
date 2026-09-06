@@ -118,9 +118,12 @@ class _SceneEditorScreenState extends ConsumerState<SceneEditorScreen> {
     final title = Text(_isNew ? context.tr(fr: 'Nouvelle scène', en: 'New scene') : context.tr(fr: 'Modifier la scène', en: 'Edit scene'));
     if (home == null) return Scaffold(appBar: AppBar(title: title), body: NoHomeView(homes: homes));
     final homeId = home.id;
+    // Scene create/update/delete are admin-only on the hub: members get a read-only view.
+    final canManage = home.canManage;
+    if (_isNew && !canManage) return Scaffold(appBar: AppBar(title: title), body: const AdminOnlyEditorView());
     final scenesAsync = ref.watch(scenesProvider(homeId));
     if (!_isNew) {
-      final scene = scenesAsync.value?.where((s) => s.id == widget.sceneId);
+      final scene = scenesAsync.valueOrNull?.where((s) => s.id == widget.sceneId);
       if (scene == null || scene.isEmpty) {
         return Scaffold(
           appBar: AppBar(title: title),
@@ -138,14 +141,14 @@ class _SceneEditorScreenState extends ConsumerState<SceneEditorScreen> {
       }
       _hydrate(scene.first);
     }
-    final devices = ref.watch(devicesProvider(homeId)).value ?? const <Device>[];
-    final scenes = scenesAsync.value ?? const <Scene>[];
+    final devices = ref.watch(devicesProvider(homeId)).valueOrNull ?? const <Device>[];
+    final scenes = scenesAsync.valueOrNull ?? const <Scene>[];
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: title,
         actions: [
-          if (!_isNew)
+          if (!_isNew && canManage)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: context.tr(fr: 'Supprimer la scène', en: 'Delete scene'),
@@ -217,7 +220,7 @@ class _SceneEditorScreenState extends ConsumerState<SceneEditorScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
-      bottomNavigationBar: SaveBar(label: context.tr(fr: 'Enregistrer', en: 'Save'), busy: _busy, onPressed: () => _save(homeId)),
+      bottomNavigationBar: canManage ? SaveBar(label: context.tr(fr: 'Enregistrer', en: 'Save'), busy: _busy, onPressed: () => _save(homeId)) : const ReadOnlyEditorBar(),
     );
   }
 }

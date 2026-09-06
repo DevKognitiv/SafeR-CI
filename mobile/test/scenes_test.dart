@@ -124,6 +124,68 @@ void main() {
     });
   });
 
+  group('ScenesScreen · dégradation et rôles', () {
+    testWidgets('a failed device list still lists the automations with unknown-device labels', (tester) async {
+      final client = ScenesFakeHubClient()..failDevices = true;
+      await pumpScenes(tester, initialLocation: '${Routes.scenes}?tab=automations', client: client);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(AutomationCard), findsOneWidget);
+      expect(find.byType(ErrorView), findsNothing);
+      expect(find.textContaining('Appareil inconnu'), findsWidgets);
+    });
+
+    testWidgets('a failed scene list shows the error state with retry in the scene editor', (tester) async {
+      final client = ScenesFakeHubClient()..failScenes = true;
+      await pumpScenes(tester, initialLocation: Routes.scene('scene-1'), client: client);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ErrorView), findsOneWidget);
+      client.failScenes = false;
+      await tester.tap(find.text('Réessayer'));
+      await settle(tester);
+      expect(find.byType(ErrorView), findsNothing);
+      expect(find.widgetWithText(TextField, 'Bonne nuit'), findsOneWidget);
+    });
+
+    testWidgets('members can run and test but get no create/edit/delete/enable controls', (tester) async {
+      final app = await pumpScenes(tester, client: ScenesFakeHubClient(role: 'member'));
+      expect(find.byIcon(Icons.add), findsNothing);
+      expect(find.byType(SceneCard), findsNWidgets(2));
+      // No edit/delete sheet on long press (without a long-press handler the card just runs).
+      await tester.longPress(find.text('Je pars'));
+      await settle(tester);
+      expect(find.text('Modifier'), findsNothing);
+      expect(find.text('Supprimer'), findsNothing);
+      app.client.runCalls.clear();
+      await tester.tap(find.text('Bonne nuit'));
+      await settle(tester);
+      expect(app.client.runCalls, ['scene-1']);
+
+      await tester.tap(find.text('Automatiser'));
+      await settle(tester);
+      expect(find.byType(AutomationCard), findsOneWidget);
+      // No swipe-to-delete wrapper around the card (the SnackBar has its own Dismissible).
+      expect(find.ancestor(of: find.byType(AutomationCard), matching: find.byType(Dismissible)), findsNothing);
+      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      await tester.tap(find.text('Tester'));
+      await settle(tester);
+      expect(app.client.triggerCalls, ['auto-1']);
+
+      // Opening an automation is read-only for members.
+      await tester.tap(find.text('Lumière si mouvement'));
+      await settle(tester);
+      expect(find.byType(AutomationEditorScreen), findsOneWidget);
+      expect(find.byKey(const Key('scenes-read-only')), findsOneWidget);
+      expect(find.text('Enregistrer'), findsNothing);
+      expect(find.byTooltip("Supprimer l'automatisation"), findsNothing);
+    });
+
+    testWidgets('members opening the new-scene route get the admin-only state', (tester) async {
+      await pumpScenes(tester, initialLocation: Routes.sceneNew, client: ScenesFakeHubClient(role: 'member'));
+      expect(find.byKey(const Key('scenes-admin-only')), findsOneWidget);
+      expect(find.text('Enregistrer'), findsNothing);
+    });
+  });
+
   group('SceneEditorScreen', () {
     testWidgets('creates a scene with a device_command action', (tester) async {
       final app = await pumpScenes(tester, initialLocation: Routes.sceneNew);

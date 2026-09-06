@@ -625,6 +625,17 @@ class SiaReceiver:
         return {str(account).upper() for account in accounts}
 
     @property
+    def account_homes(self) -> Dict[str, str]:
+        """``HUB_SIA_ACCOUNTS`` binding ``{ACCOUNT: home_id}`` (empty values mean "any home")."""
+        settings = getattr(self.runtime, "settings", None)
+        accounts = getattr(settings, "sia_accounts", None) or {}
+        return {str(account).upper(): str(home_id) for account, home_id in accounts.items() if home_id}
+
+    def home_for(self, account: str) -> Optional[str]:
+        """Home bound to ``account`` (None when unbound: the push then relies on the account being paired once)."""
+        return self.account_homes.get((account or "").upper())
+
+    @property
     def running(self) -> bool:
         """True while the TCP server is listening."""
         return self._server is not None and self._server.is_serving()
@@ -753,7 +764,9 @@ class SiaReceiver:
         devices = self._devices()
         if devices is None or not account:
             return
-        await devices.handle_push(self.brand, self.external_id(account), "state", {"state": {}, "online": True})
+        await devices.handle_push(
+            self.brand, self.external_id(account), "state", {"state": {}, "online": True}, home_id=self.home_for(account),
+        )
 
     async def apply_update(self, account: str, update: SiaUpdate) -> None:
         """Push a mapped event to the device service (state first, then events)."""
@@ -768,9 +781,10 @@ class SiaReceiver:
             logger.warning("SIA: event %s without account; dropping", update.code)
             return
         external_id = self.external_id(account)
+        home_id = self.home_for(account)
         self.stats["events"] += 1
         logger.info("SIA %s: %s -> %s %s", account, update.code, update.description, update.state or "")
         if update.state:
-            await devices.handle_push(self.brand, external_id, "state", {"state": dict(update.state), "online": True})
+            await devices.handle_push(self.brand, external_id, "state", {"state": dict(update.state), "online": True}, home_id=home_id)
         for event in update.events:
-            await devices.handle_push(self.brand, external_id, "event", dict(event))
+            await devices.handle_push(self.brand, external_id, "event", dict(event), home_id=home_id)

@@ -8,11 +8,13 @@ import httpx
 import pytest_asyncio
 from fastapi import FastAPI
 
-from app.hub.app import create_app
-from app.hub.runtime import HubRuntime, set_runtime
-from app.hub.settings import HubSettings
-
+# ``app.hub.app`` builds a module-level app from the environment and SECRET_KEY is required.
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+
+from app.hub.app import create_app  # noqa: E402  pylint: disable=wrong-import-position
+from app.hub.runtime import HubRuntime, set_runtime  # noqa: E402  pylint: disable=wrong-import-position
+from app.hub.settings import HubSettings  # noqa: E402  pylint: disable=wrong-import-position
+
 PREFIX = "/api/v1/hub"
 
 

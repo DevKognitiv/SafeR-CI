@@ -470,14 +470,27 @@ async def rotate_integration_webhook(
 async def device_webhook(
     request: Request, ctx: DeviceAccess = Depends(device_access), db: AsyncSession = Depends(get_db)
 ) -> WebhookUrlOut:
-    """Generic webhook URL for one device (``config.webhook_secret`` is created on demand). Admin/owner."""
+    """Generic webhook URL for one device (``Device.webhook_secret`` is created on demand). Admin/owner.
+
+    The secret has its own column (never part of ``config``, which every member can read and which pairing
+    rewrites) so it survives re-pairing and is only visible through this admin endpoint.
+    """
     ctx.access.require("admin")
     device = ctx.device
-    config = dict(device.config or {})
-    secret = config.get("webhook_secret")
-    if not secret:
-        secret = _new_secret()
-        config["webhook_secret"] = secret
-        device.config = config
+    if not device.webhook_secret:
+        device.webhook_secret = _new_secret()
         await db.commit()
-    return _webhook_out(request, GENERIC_WEBHOOK_ROUTE, secret, GENERIC_BRAND, device_id=device.id)
+    return _webhook_out(request, GENERIC_WEBHOOK_ROUTE, device.webhook_secret, GENERIC_BRAND, device_id=device.id)
+
+
+@router.post("/devices/{device_id}/webhook/rotate", response_model=WebhookUrlOut)
+async def rotate_device_webhook(
+    request: Request, ctx: DeviceAccess = Depends(device_access), db: AsyncSession = Depends(get_db)
+) -> WebhookUrlOut:
+    """Replace the device webhook secret (previous URL stops working immediately). Admin/owner."""
+    ctx.access.require("admin")
+    device = ctx.device
+    device.webhook_secret = _new_secret()
+    await db.commit()
+    logger.info("Webhook secret rotated for device %s by %s", device.id, ctx.access.user.id)
+    return _webhook_out(request, GENERIC_WEBHOOK_ROUTE, device.webhook_secret, GENERIC_BRAND, device_id=device.id)

@@ -6,17 +6,20 @@ import 'me_common.dart';
 
 /// Row of the members list: avatar initials, name, e-mail, role chip and an optional actions menu.
 class MemberTile extends StatelessWidget {
-  const MemberTile({super.key, required this.member, this.isMe = false, this.onChangeRole, this.onRemove});
+  const MemberTile({super.key, required this.member, this.isMe = false, this.onChangeRole, this.onRemove, this.onLeave});
 
   final Member member;
   final bool isMe;
   final VoidCallback? onChangeRole;
   final VoidCallback? onRemove;
 
+  /// Own row only: leave the home (self-removal).
+  final VoidCallback? onLeave;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasActions = onChangeRole != null || onRemove != null;
+    final hasActions = onChangeRole != null || onRemove != null || onLeave != null;
     final name = member.name.trim().isEmpty ? member.email.split('@').first : member.name;
     return ListTile(
       key: ValueKey('member-${member.userId}'),
@@ -27,7 +30,8 @@ class MemberTile extends StatelessWidget {
           Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600))),
           if (isMe) ...[
             const SizedBox(width: 6),
-            Text(context.tr(fr: '(moi)', en: '(me)'), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            // Flexible too: a wide role chip + menu can leave the title very little room.
+            Flexible(child: Text(context.tr(fr: '(moi)', en: '(me)'), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
           ],
         ],
       ),
@@ -45,6 +49,8 @@ class MemberTile extends StatelessWidget {
                     onChangeRole?.call();
                   case _MemberAction.remove:
                     onRemove?.call();
+                  case _MemberAction.leave:
+                    onLeave?.call();
                 }
               },
               itemBuilder: (context) => [
@@ -62,6 +68,15 @@ class MemberTile extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
+                if (onLeave != null)
+                  PopupMenuItem(
+                    value: _MemberAction.leave,
+                    child: ListTile(
+                      leading: Icon(Icons.exit_to_app, color: theme.colorScheme.error),
+                      title: Text(context.tr(fr: 'Quitter la maison', en: 'Leave home'), style: TextStyle(color: theme.colorScheme.error)),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
               ],
             )
           else
@@ -72,4 +87,4 @@ class MemberTile extends StatelessWidget {
   }
 }
 
-enum _MemberAction { role, remove }
+enum _MemberAction { role, remove, leave }

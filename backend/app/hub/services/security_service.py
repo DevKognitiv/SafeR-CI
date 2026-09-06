@@ -24,6 +24,7 @@ from app.hub import events as ev
 from app.hub.adapters.base import AdapterError
 from app.hub.adapters.registry import registry
 from app.hub.capabilities import CATEGORIES, SECURITY_MODES, find_capability
+from app.hub.db import rollback_and_restore
 from app.hub.models import Device, Home, utcnow
 from app.hub.schemas import DeviceOut, SecurityOut
 from app.hub.services.device_service import DeviceService
@@ -103,7 +104,7 @@ async def _propagate_mode(
             errors.append((panel, exc))
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Unexpected failure sending arm_mode=%s to panel %s (%s)", mode, panel.name, panel.brand)
-            await session.rollback()
+            await rollback_and_restore(session)  # keeps home/panels usable by the caller
             errors.append((panel, exc))
     return errors
 
@@ -188,7 +189,7 @@ async def _hardware_clear(runtime: Any, service: DeviceService, session: AsyncSe
                 await service.apply_state(session, panel, dict(partial), online=True, source="command")
             except Exception:  # pylint: disable=broad-except
                 logger.exception("Could not apply cleared state of panel %s", panel.name)
-                await session.rollback()
+                await rollback_and_restore(session)
         return True
     logger.info("Panel %s (%s) has no alarm-clear command", panel.name, panel.brand)
     return False

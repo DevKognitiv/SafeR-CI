@@ -3,8 +3,10 @@
 :func:`raise_sos` stores a ``SosAlert``, trips the home's software alarm (so the Security tab shows the red
 banner), posts a critical *alarm* message, publishes ``sos.raised`` on the bus and, when
 ``SAFER_INCIDENTS_URL`` is configured, forwards the alert as an incident through
-``runtime.ctx_for("sos").http()`` (so tests inject an ``httpx.MockTransport``). Forwarding is best effort:
-network/HTTP failures are logged and the alert simply stays ``forwarded=False``.
+``runtime.ctx_for("sos").http()`` (so tests inject an ``httpx.MockTransport``). Forwarding is fire-and-forget:
+it runs in a background task (``runtime.spawn``) with its own session so the panic button answers immediately;
+network/HTTP failures are logged and the alert simply stays ``forwarded=False``. ``GET /homes/{id}/sos`` shows
+``forwarded``/``incident_id`` once the platform answered.
 """
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from app.hub.services.device_service import DeviceService
 
 logger = logging.getLogger("safer.hub.sos")
 
-__all__ = ["raise_sos", "forward_sos", "build_incident_payload", "DEFAULT_LAT", "DEFAULT_LON", "SOS_TITLE"]
+__all__ = ["raise_sos", "forward_sos", "forward_later", "build_incident_payload", "DEFAULT_LAT", "DEFAULT_LON", "SOS_TITLE"]
 
 # Abidjan (Plateau) — used when neither the phone nor the home has a position.
 DEFAULT_LAT = 5.36
@@ -121,8 +123,19 @@ async def forward_sos(runtime: Any, session: AsyncSession, home: Home, user: Use
     return True
 
 
+async def forward_later(runtime: Any, alert_id: str, user: User, incident_type: str = "panic") -> bool:
+    """Background half of ``raise_sos``: reload the alert/home in a fresh session and forward them."""
+    async with runtime.db.session() as session:
+        alert = await session.get(SosAlert, alert_id)
+        home = await session.get(Home, alert.home_id) if alert is not None else None
+        if alert is None or home is None:
+            logger.warning("SOS %s vanished before it could be forwarded", alert_id)
+            return False
+        return await forward_sos(runtime, session, home, user, alert, incident_type)
+
+
 async def raise_sos(runtime: Any, session: AsyncSession, home: Home, user: User, body: SosIn) -> SosAlert:
-    """Create an SOS alert: trip the home alarm, post an alarm message, publish ``sos.raised`` and forward it."""
+    """Create an SOS alert: trip the home alarm, post an alarm message, publish ``sos.raised`` and queue forwarding."""
     alert = SosAlert(
         home_id=home.id, user_id=getattr(user, "id", None), lat=body.lat, lon=body.lon,
         note=(body.note or "").strip() or None, status="open",
@@ -153,5 +166,7 @@ async def raise_sos(runtime: Any, session: AsyncSession, home: Home, user: User,
         await bus.publish(ev.HubEvent(ev.SECURITY_ALARM, home_id=home.id, payload={"active": True, "sos_id": alert.id}))
     logger.warning("SOS %s raised in home %s by %s", alert.id, home.id, getattr(user, "email", "?"))
 
-    await forward_sos(runtime, session, home, user, alert, body.incident_type)
+    if (getattr(runtime.settings, "SAFER_INCIDENTS_URL", "") or "").strip():
+        # Fire-and-forget: the request session closes with the response, so the task opens its own.
+        runtime.spawn(forward_later(runtime, alert.id, user, body.incident_type), name=f"safer-hub-sos-forward-{alert.id}")
     return alert

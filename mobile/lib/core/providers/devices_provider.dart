@@ -11,14 +11,14 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
   @override
   Future<List<Device>> build(String arg) async {
     ref.listen<AsyncValue<HubEvent>>(hubEventsProvider(arg), (_, next) {
-      final event = next.value;
+      final event = next.valueOrNull;
       if (event != null) _onEvent(event);
     });
     return ref.read(hubClientProvider).devices(arg);
   }
 
   void _onEvent(HubEvent event) {
-    final devices = state.value;
+    final devices = state.valueOrNull;
     if (devices == null) return;
     switch (event.type) {
       case HubEvent.deviceState:
@@ -52,7 +52,7 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
   }
 
   void _replace(Device device) {
-    final devices = state.value;
+    final devices = state.valueOrNull;
     if (devices == null) return;
     state = AsyncData([for (final d in devices) d.id == device.id ? device : d]);
   }
@@ -63,7 +63,13 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
     if (previous != null) _replace(previous.withState({code: value}));
     try {
       final updated = await ref.read(hubClientProvider).sendCommand(deviceId, code, value);
-      _replace(updated);
+      if (state.hasValue) {
+        _replace(updated);
+      } else {
+        // The list failed to load earlier: the hub executed the command, so
+        // recover the list instead of silently dropping the result.
+        await refresh();
+      }
       return updated;
     } on ApiException {
       if (previous != null) _replace(previous);

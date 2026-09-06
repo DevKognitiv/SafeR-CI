@@ -13,7 +13,10 @@ query parameter (or the ``X-Webhook-Secret`` header). Secrets are compared in co
 ``POST /webhooks/generic/{device_id}?secret=...``
     Lets scripts, ESPHome/Tasmota rules or Node-RED flows update a device without a dedicated adapter:
     ``{"state": {...}, "online": true}`` and/or ``{"event": {"type": "...", ...}}`` (or ``"events": [...]``).
-    The secret lives in ``device.config["webhook_secret"]`` (``GET /devices/{id}/webhook`` creates it).
+    The secret lives in ``Device.webhook_secret`` (``GET /devices/{id}/webhook`` creates it; never serialised).
+
+Every push is scoped to the authenticated target (the device id, or the integration and its home): the same
+``(brand, external_id)`` legitimately exists in several homes and must never be updated across them.
 """
 from __future__ import annotations
 
@@ -156,8 +159,8 @@ def generic_items(payload: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
     return items
 
 
-async def _apply_items(runtime: HubRuntime, brand: str, items: Any, target: str) -> WebhookAck:
-    """Push every well-formed adapter item through ``DeviceService.handle_push``."""
+async def _apply_items(runtime: HubRuntime, brand: str, items: Any, target: str, home_id: str) -> WebhookAck:
+    """Push every well-formed adapter item through ``DeviceService.handle_push`` (scoped to the integration)."""
     service = _device_service(runtime)
     accepted = ignored = 0
     for item in items or []:
@@ -171,7 +174,7 @@ async def _apply_items(runtime: HubRuntime, brand: str, items: Any, target: str)
             logger.warning("Webhook %s/%s: skipping malformed item %r", brand, target, item)
             ignored += 1
             continue
-        await service.handle_push(brand, str(external_id), event_type, dict(payload))
+        await service.handle_push(brand, str(external_id), event_type, dict(payload), home_id=home_id, integration_id=target)
         accepted += 1
     logger.info("Webhook %s/%s: %d update(s) applied, %d ignored", brand, target, accepted, ignored)
     return WebhookAck(accepted=accepted, ignored=ignored)
@@ -191,7 +194,7 @@ async def generic_webhook(
         device = await session.get(Device, device_id)
         if device is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
-        verify_secret((device.config or {}).get("webhook_secret"), _provided_secret(request, secret))
+        verify_secret(device.webhook_secret, _provided_secret(request, secret))
         brand, external_id = device.brand, device.external_id
     payload = await read_payload(request)
     if not isinstance(payload, dict):
@@ -201,7 +204,7 @@ async def generic_webhook(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Body must contain 'state', 'online', 'event' or 'events'")
     service = _device_service(runtime)
     for event_type, item_payload in items:
-        await service.handle_push(brand, external_id, event_type, item_payload)
+        await service.handle_push(brand, external_id, event_type, item_payload, device_id=device_id)
     logger.info("Generic webhook for device %s: %d update(s) applied", device_id, len(items))
     return WebhookAck(accepted=len(items))
 
@@ -225,7 +228,8 @@ async def brand_webhook(
         verify_secret(integration.webhook_secret, _provided_secret(request, secret))
         config = dict(integration.config or {})
         credentials = runtime.vault.decrypt(integration.credentials_enc)
+        home_id = integration.home_id
     payload = await read_payload(request)
     # AdapterError (unsupported -> 501, invalid_input -> 400, ...) is mapped by the application handler.
-    items = await adapter.handle_webhook(config, credentials, payload, runtime.ctx_for(brand))
-    return await _apply_items(runtime, brand, items, integration_id)
+    items = await adapter.handle_webhook(config, credentials, payload, runtime.ctx_for(brand, home_id))
+    return await _apply_items(runtime, brand, items, integration_id, home_id)

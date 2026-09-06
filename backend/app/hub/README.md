@@ -18,8 +18,8 @@ standalone with the same prefix.
 ```bash
 cd backend
 pip install -r requirements.txt
-SECRET_KEY=change-me HUB_DATABASE_URL=sqlite+aiosqlite:///./safer_hub.db \
-  uvicorn app.hub.app:app --port 8000
+export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"   # required, never a placeholder
+HUB_DATABASE_URL=sqlite+aiosqlite:///./safer_hub.db uvicorn app.hub.app:app --port 8000
 ```
 
 - API: `http://localhost:8000/api/v1/hub/...` - OpenAPI docs: `http://localhost:8000/docs`
@@ -46,14 +46,14 @@ injectable connector. Each test gets a fresh in-memory SQLite database (`tests/c
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SECRET_KEY` | dev placeholder | JWT signing key (reuse the app's `SECRET_KEY`) |
+| `SECRET_KEY` | **required** (placeholders such as `change-me`/`dev` are refused) | JWT signing key (reuse the app's `SECRET_KEY`); the hub refuses to start without it |
 | `HUB_DATABASE_URL` | `DATABASE_URL`, else `sqlite+aiosqlite:///./safer_hub.db` | Async SQLAlchemy URL |
-| `HUB_ENCRYPTION_KEY` | derived from `SECRET_KEY` | Fernet key for device/integration credentials |
+| `HUB_ENCRYPTION_KEY` | derived from `SECRET_KEY` | Fernet key for device/integration credentials (a warning is logged when it is derived) |
 | `HUB_TOKEN_TTL_DAYS` | `30` | JWT lifetime |
 | `HUB_POLL_INTERVAL` | `30` | Seconds between refreshes of devices without push |
 | `HUB_HTTP_TIMEOUT` | `10.0` | Timeout for adapter HTTP calls |
 | `HUB_SIA_PORT` | `0` (off) | TCP port of the SIA DC-09 receiver |
-| `HUB_SIA_ACCOUNTS` | `""` | Comma separated `account:home_id` pairs accepted by the receiver |
+| `HUB_SIA_ACCOUNTS` | `""` | Comma separated `account:home_id` pairs accepted by the receiver; events of a bound account only reach that home, and pairing the account into another home is refused |
 | `HUB_WEATHER_ENABLED` | `true` | Open-Meteo weather on `GET /homes/{id}/weather` |
 | `HUB_DEMO_ENABLED` | `true` | Expose the `demo` brand (virtual devices) |
 | `HUB_ALLOW_OPEN_REGISTRATION` | `true` | Allow `POST /auth/register` after the first user |

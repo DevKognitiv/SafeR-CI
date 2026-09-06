@@ -15,9 +15,12 @@ Two pairing methods:
     - ``PUT .../hubs/{hubId}/commands/arming`` arms/disarms; ``POST .../devices/{id}/command``
       switches sockets/relays.
 
-  Limitation: Ajax has no "stay" mode. ``armed_home`` arms the hub (or, when the hub runs in group
-  mode, every group in turn — best effort); ``PARTIALLY_ARMED`` reported by the hub is mapped back
-  to ``armed_home``. Rotated session tokens live in the adapter's memory: the persisted
+  Ajax's partial arming is *Night Mode* (only devices flagged "Arm in Night Mode" are armed), which is
+  the stay/home equivalent: both ``armed_home`` and ``armed_night`` send ``NIGHT_MODE_ON`` (a full
+  ``ARM`` would arm interior detectors while the user believes they are in stay mode). The hub reports
+  ``NIGHT_MODE`` for both, so ``refresh`` keeps the mode the hub was last asked for (``armed_home``
+  stays ``armed_home``); ``PARTIALLY_ARMED`` (group mode) maps to ``armed_home``. Rotated session
+  tokens live in the adapter's memory: the persisted
   ``session_token`` is only a bootstrap and the stored ``refresh_token``/``password_hash`` are used
   to recover after a restart.
 
@@ -60,8 +63,10 @@ ARM_FROM_AJAX: Dict[str, str] = {
     "ARMED": "armed_away", "NIGHT_MODE": "armed_night", "PARTIALLY_ARMED": "armed_home", "DISARMED": "disarmed",
 }
 ARM_TO_AJAX: Dict[str, str] = {
-    "armed_away": "ARM", "armed_home": "ARM", "armed_night": "NIGHT_MODE_ON", "disarmed": "DISARM",
+    "armed_away": "ARM", "armed_home": "NIGHT_MODE_ON", "armed_night": "NIGHT_MODE_ON", "disarmed": "DISARM",
 }
+# Hub states that cannot be told apart from the requested mode: keep the last known mode among these.
+AMBIGUOUS_MODES = frozenset({"armed_home", "armed_night"})
 SIGNAL_LEVELS: Dict[str, Optional[int]] = {
     "STRONG": 100, "HIGH": 100, "GOOD": 75, "NORMAL": 66, "MEDIUM": 50, "WEAK": 33, "LOW": 33, "POOR": 25,
     "NO_SIGNAL": 0, "NONE": 0, "UNKNOWN": None,
@@ -966,6 +971,9 @@ class AjaxAdapter(BrandAdapter):
                     if not isinstance(hub, dict):
                         raise AdapterError("Unexpected hub payload from Ajax", "unreachable")
                     online, state = map_hub_state(hub)
+                    previous = _as_str(device.state.get("arm_mode"))
+                    if state.get("arm_mode") == "armed_night" and previous in AMBIGUOUS_MODES:
+                        state["arm_mode"] = previous  # NIGHT_MODE is what both armed_home and armed_night look like
                 else:
                     data = await api.get(api.user_path(f"/hubs/{hub_id}/devices/{device.external_id}"), f"device {device.external_id}")
                     if not isinstance(data, dict):
@@ -1006,24 +1014,8 @@ class AjaxAdapter(BrandAdapter):
         if mode not in ARM_TO_AJAX:
             raise AdapterError(f"Unknown arm mode '{mode}'", "invalid_input")
         hub_id = _as_str(device.cfg("hub_id")) or device.external_id
+        # armed_home -> NIGHT_MODE_ON (partial arming), never ARM: arming every group would be a full arm.
         body = {"command": ARM_TO_AJAX[mode], "ignoreProblems": True}
-        groups = device.cfg("groups") or []
-        if mode == "armed_home" and isinstance(groups, list) and groups and device.cfg("group_mode"):
-            # Ajax has no stay mode: in group mode arm every group (best effort), else arm the whole hub.
-            armed = 0
-            for group in groups:
-                group_id = _as_str(group.get("id")) if isinstance(group, dict) else _as_str(group)
-                if not group_id:
-                    continue
-                try:
-                    await api.put(api.user_path(f"/hubs/{hub_id}/groups/{group_id}/commands/arming"), body, f"arm group {group_id}")
-                    armed += 1
-                except AdapterError as exc:
-                    if exc.code == "auth_failed":
-                        raise
-                    api.log.warning("ajax: arming group %s failed (%s)", group_id, exc.message)
-            if armed:
-                return {"arm_mode": mode}
         await api.put(api.user_path(f"/hubs/{hub_id}/commands/arming"), body, f"arming {ARM_TO_AJAX[mode]}")
         partial: Dict[str, Any] = {"arm_mode": mode}
         if mode == "disarmed":

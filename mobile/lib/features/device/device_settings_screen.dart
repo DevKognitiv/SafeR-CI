@@ -128,6 +128,9 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
     final brand = ref.watch(brandProvider(device.brand));
     final lastSeen = device.lastSeenAt ?? device.updatedAt;
     final none = context.tr(fr: 'Non renseigné', en: 'Not provided');
+    // PATCH/DELETE /devices are admin-only on the hub; members keep refresh and the read-only rows.
+    final canManage = ref.watch(homesProvider).valueOrNull?.where((h) => h.id == device.homeId).firstOrNull?.canManage ?? false;
+    final editable = !_busy && canManage;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.tr(fr: "Paramètres de l'appareil", en: 'Device settings'))),
@@ -148,7 +151,7 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
                           label: context.tr(fr: "Changer l'icône", en: 'Change icon'),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: _busy ? null : _pickIcon,
+                            onTap: editable ? _pickIcon : null,
                             child: Container(
                               width: 64,
                               height: 64,
@@ -180,22 +183,30 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
                 Card(
                   child: Column(
                     children: [
-                      ValueRow(icon: Icons.edit_outlined, label: context.tr(fr: 'Nom', en: 'Name'), value: device.name, onTap: _busy ? null : _rename),
+                      ValueRow(icon: Icons.edit_outlined, label: context.tr(fr: 'Nom', en: 'Name'), value: device.name, onTap: editable ? _rename : null),
                       const Divider(indent: 48),
                       ValueRow(
                           icon: Icons.meeting_room_outlined,
                           label: context.tr(fr: 'Pièce', en: 'Room'),
                           value: room?.name ?? context.tr(fr: 'Aucune pièce', en: 'No room'),
-                          onTap: _busy ? null : _pickRoom),
+                          onTap: editable ? _pickRoom : null),
                       const Divider(indent: 48),
                       ValueRow(
                           icon: Icons.emoji_objects_outlined,
                           label: context.tr(fr: 'Icône', en: 'Icon'),
                           value: device.icon ?? context.tr(fr: 'Par défaut', en: 'Default'),
-                          onTap: _busy ? null : _pickIcon),
+                          onTap: editable ? _pickIcon : null),
                     ],
                   ),
                 ),
+                if (!canManage)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                    child: Text(
+                      context.tr(fr: "Seuls les administrateurs peuvent renommer, déplacer ou supprimer l'appareil.", en: 'Only administrators can rename, move or remove the device.'),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
                 SectionHeader(title: context.tr(fr: 'Informations', en: 'Information'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
                 Card(
                   child: Column(
@@ -234,16 +245,18 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
                     onTap: _busy ? null : _refresh,
                   ),
                 ),
-                SectionHeader(title: context.tr(fr: 'Zone de danger', en: 'Danger zone'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.delete_outline, color: SafeRColors.danger),
-                    title: Text(context.tr(fr: "Supprimer l'appareil", en: 'Remove device'),
-                        style: const TextStyle(color: SafeRColors.danger, fontWeight: FontWeight.w600)),
-                    subtitle: Text(context.tr(fr: 'Retire l\'appareil de cette maison', en: 'Removes the device from this home')),
-                    onTap: _busy ? null : _remove,
+                if (canManage) ...[
+                  SectionHeader(title: context.tr(fr: 'Zone de danger', en: 'Danger zone'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.delete_outline, color: SafeRColors.danger),
+                      title: Text(context.tr(fr: "Supprimer l'appareil", en: 'Remove device'),
+                          style: const TextStyle(color: SafeRColors.danger, fontWeight: FontWeight.w600)),
+                      subtitle: Text(context.tr(fr: 'Retire l\'appareil de cette maison', en: 'Removes the device from this home')),
+                      onTap: _busy ? null : _remove,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

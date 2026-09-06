@@ -16,6 +16,8 @@ String? pairingErrorCode(Object error) {
       return 'unreachable';
     case 401:
       return 'auth_failed';
+    case 403:
+      return 'forbidden';
     case 400:
     case 422:
       return 'invalid_input';
@@ -40,6 +42,11 @@ String? pairingErrorHint(BuildContext context, Object error) {
       return context.tr(
         fr: "Vérifiez le nom d'utilisateur et le mot de passe de l'appareil (ou les identifiants du compte).",
         en: 'Check the device username and password (or the account credentials).',
+      );
+    case 'forbidden':
+      return context.tr(
+        fr: "Seuls les administrateurs et le propriétaire de la maison peuvent ajouter des appareils. Demandez à un administrateur de vous promouvoir.",
+        en: 'Only the administrators and the owner of the home can add devices. Ask an administrator to promote you.',
       );
     case 'invalid_input':
       return context.tr(fr: 'Vérifiez les informations saisies.', en: 'Check the information you entered.');

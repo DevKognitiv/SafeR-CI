@@ -6,13 +6,16 @@ import 'fake_hub_client.dart';
 /// FakeHubClient variant for the device screens: offline devices, extra devices
 /// (generic + gateway with children), a "no home" mode and refresh counting.
 class DeviceFakeHubClient extends FakeHubClient {
-  DeviceFakeHubClient({this.offlineIds = const {}, this.noHomes = false, List<Device>? extras}) : extras = extras ?? demoExtras(FakeHubClient.homeId);
+  DeviceFakeHubClient({this.offlineIds = const {}, this.noHomes = false, this.role = 'owner', List<Device>? extras}) : extras = extras ?? demoExtras(FakeHubClient.homeId);
 
   /// Devices reported offline.
   final Set<String> offlineIds;
 
   /// When true, the user has no home at all.
   final bool noHomes;
+
+  /// Role of the signed-in user in the demo home.
+  final String role;
 
   /// Additional devices (kept outside the shared fake's private list).
   List<Device> extras;
@@ -75,7 +78,10 @@ class DeviceFakeHubClient extends FakeHubClient {
       if (failNetwork) throw ApiException('Impossible de joindre le hub', status: null);
       return [];
     }
-    return super.homes();
+    return [
+      for (final h in await super.homes())
+        Home(id: h.id, name: h.name, lat: h.lat, lon: h.lon, address: h.address, securityMode: h.securityMode, alarmActive: h.alarmActive, role: role, rooms: h.rooms, memberCount: h.memberCount, deviceCount: h.deviceCount),
+    ];
   }
 
   @override

@@ -103,7 +103,8 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
 }
 
 /// Bottom sheet picking a role for an existing member. Resolves with the role or null.
-Future<String?> showRolePickerSheet(BuildContext context, {required String current}) => showModalBottomSheet<String>(
+/// [allowOwner] (owner only) adds "Transférer la propriété", which resolves with 'owner'.
+Future<String?> showRolePickerSheet(BuildContext context, {required String current, bool allowOwner = false}) => showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
@@ -130,6 +131,16 @@ Future<String?> showRolePickerSheet(BuildContext context, {required String curre
                   selected: role == current,
                   onTap: () => Navigator.of(sheetContext).pop(role),
                 ),
+              if (allowOwner) ...[
+                const Divider(),
+                ListTile(
+                  key: const Key('member-transfer-ownership'),
+                  leading: Icon(roleIcon('owner'), color: roleColor('owner')),
+                  title: Text(sheetContext.tr(fr: 'Transférer la propriété', en: 'Transfer ownership')),
+                  subtitle: Text(sheetContext.tr(fr: 'Cette personne devient propriétaire ; vous devenez administrateur', en: 'This person becomes the owner; you become an admin')),
+                  onTap: () => Navigator.of(sheetContext).pop('owner'),
+                ),
+              ],
               const SizedBox(height: 8),
             ],
           ),

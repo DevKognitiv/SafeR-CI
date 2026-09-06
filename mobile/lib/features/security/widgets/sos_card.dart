@@ -43,7 +43,7 @@ class SosCard extends StatelessWidget {
                             Text(context.tr(fr: 'Urgence ? Appuyez ici', en: 'Emergency? Tap here'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
                             const SizedBox(height: 4),
                             Text(
-                              context.tr(fr: 'Alerte immédiate aux secours et à vos proches, avec votre position.', en: 'Instantly alert emergency services and your contacts, with your location.'),
+                              context.tr(fr: 'Déclenche l\'alarme de la maison et transmet l\'alerte aux secours SafeR, avec votre position.', en: 'Raises the home alarm and sends the alert to SafeR responders, with your location.'),
                               style: const TextStyle(color: Colors.white70, fontSize: 12.5),
                             ),
                           ],

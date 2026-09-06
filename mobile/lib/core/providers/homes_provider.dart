@@ -50,9 +50,20 @@ class HomesNotifier extends AsyncNotifier<List<Home>> {
     await refresh();
   }
 
+  /// Leave [homeId] (DELETE /homes/{id}/members/{me}); the owner must transfer
+  /// ownership first (the hub refuses otherwise). Switches the current home
+  /// away from the one left.
+  Future<void> leave(String homeId) async {
+    final userId = ref.read(authProvider).user?.id;
+    if (userId == null) throw StateError('Not signed in');
+    await ref.read(hubClientProvider).removeMember(homeId, userId);
+    if (ref.read(currentHomeIdProvider) == homeId) ref.read(currentHomeIdProvider.notifier).set(null);
+    await refresh();
+  }
+
   /// Patch a home locally (used by realtime security events).
   void patch(String homeId, Home Function(Home) update) {
-    final homes = state.value;
+    final homes = state.valueOrNull;
     if (homes == null) return;
     state = AsyncData([for (final h in homes) h.id == homeId ? update(h) : h]);
   }

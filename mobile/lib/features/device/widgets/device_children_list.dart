@@ -65,7 +65,7 @@ class _ChildTile extends ConsumerWidget {
     final alerting = device.isAlerting;
     final accent = alerting ? SafeRColors.danger : (device.online ? SafeRColors.primary : theme.colorScheme.onSurfaceVariant);
     final bypassCap = showBypass ? writableCapability(device, 'bypass', type: 'bool') : null;
-    final summary = device.online ? device.stateSummary : context.tr(fr: 'HORS LIGNE', en: 'OFFLINE');
+    final summary = deviceStateSummary(context, device);
     return ListTile(
       leading: Container(
         width: 40,
@@ -85,7 +85,8 @@ class _ChildTile extends ConsumerWidget {
               label: context.tr(fr: 'Exclure ${device.name}', en: 'Bypass ${device.name}'),
               child: Switch.adaptive(
                 value: device.boolValue('bypass') ?? false,
-                onChanged: (v) => sendDeviceCommand(context, ref, device, 'bypass', v),
+                // An offline zone cannot take commands: keep the switch read-only.
+                onChanged: device.online ? (v) => sendDeviceCommand(context, ref, device, 'bypass', v) : null,
               ),
             )
           : const Icon(Icons.chevron_right),

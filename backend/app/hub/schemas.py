@@ -208,6 +208,14 @@ class DeviceOut(ORMModel):
     updated_at: datetime
     last_seen_at: Optional[datetime] = None
 
+    @field_validator("config", mode="before")
+    @classmethod
+    def _public_config(cls, value: Any) -> Any:
+        """``config`` is non-secret; drop the webhook secret older releases stored there."""
+        if isinstance(value, dict) and "webhook_secret" in value:
+            return {k: v for k, v in value.items() if k != "webhook_secret"}
+        return value
+
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)

@@ -15,7 +15,6 @@ import 'package:safer_ci/features/me/widgets/integration_tile.dart';
 import 'package:safer_ci/features/me/widgets/me_common.dart';
 import 'package:safer_ci/features/me/widgets/member_tile.dart';
 import 'package:safer_ci/features/me/widgets/message_tile.dart';
-import 'package:safer_ci/features/me/widgets/notification_prefs.dart';
 
 import 'helpers/fake_hub_client.dart';
 import 'helpers/me_fake_client.dart';
@@ -225,6 +224,27 @@ void main() {
       expect(find.text('Maison supprimée'), findsOneWidget);
     });
 
+    testWidgets('non-owners can leave a home from its menu; the owner cannot', (tester) async {
+      final app = await pumpMe(tester, initialLocation: Routes.homes, client: MeFakeHubClient(role: 'member'));
+      await tester.tap(find.byTooltip('Options de la maison'));
+      await settle(tester);
+      expect(find.text('Supprimer'), findsNothing);
+      expect(find.text('Modifier'), findsNothing);
+      await tester.tap(find.text('Quitter la maison'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Quitter'));
+      await settle(tester);
+      expect(app.client.removedMembers, [FakeHubClient.userId]);
+      expect(find.text('Vous avez quitté « Maison Cocody »'), findsOneWidget);
+
+      final owner = await pumpMe(tester, initialLocation: Routes.homes);
+      await tester.tap(find.byTooltip('Options de la maison'));
+      await settle(tester);
+      expect(find.text('Quitter la maison'), findsNothing);
+      expect(find.text('Supprimer'), findsOneWidget);
+      expect(owner.client.removedMembers, isEmpty);
+    });
+
     testWidgets('shows the empty state with a call to action', (tester) async {
       await pumpMe(tester, initialLocation: Routes.homes, client: MeFakeHubClient(noHomes: true));
       expect(find.byType(EmptyState), findsOneWidget);
@@ -308,12 +328,64 @@ void main() {
       expect(find.byType(MemberTile), findsOneWidget);
     });
 
-    testWidgets('plain members cannot manage the list', (tester) async {
-      await pumpMe(tester, initialLocation: Routes.members(homeId), client: MeFakeHubClient(role: 'member'));
+    testWidgets('plain members cannot manage the list but can leave the home', (tester) async {
+      final app = await pumpMe(tester, initialLocation: Routes.members(homeId), client: MeFakeHubClient(role: 'member'));
       expect(find.byType(MembersScreen), findsOneWidget);
       expect(find.byKey(const Key('members-add')), findsNothing);
-      expect(find.byTooltip('Options du membre'), findsNothing);
       expect(find.text('Seuls le propriétaire et les administrateurs peuvent gérer les membres.'), findsOneWidget);
+      // Only the own row has a menu, and it only offers to leave.
+      expect(find.byTooltip('Options du membre'), findsOneWidget);
+      await tester.tap(find.byTooltip('Options du membre'));
+      await settle(tester);
+      expect(find.text('Changer le rôle'), findsNothing);
+      expect(find.text('Retirer'), findsNothing);
+      await tester.tap(find.text('Quitter la maison'));
+      await settle(tester);
+      expect(find.text('Quitter « Maison Cocody » ?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Quitter'));
+      await settle(tester);
+      expect(app.client.removedMembers, [FakeHubClient.userId]);
+      expect(find.text('Vous avez quitté « Maison Cocody »'), findsOneWidget);
+      expect(app.router.routeInformationProvider.value.uri.toString(), Routes.homes);
+    });
+
+    testWidgets('admins remove plain members only; role changes and removing admins are owner-only', (tester) async {
+      final carla = Member(userId: 'user-3', email: 'carla@safer.ci', name: 'Carla', role: 'admin', joinedAt: DateTime.now());
+      await pumpMe(tester, initialLocation: Routes.members(homeId), client: MeFakeHubClient(role: 'admin', extraMembers: [carla]));
+      expect(find.byKey(const Key('members-add')), findsOneWidget);
+      // Alice (me, admin) and Bob (member) have menus; Carla (admin) has none.
+      expect(find.byTooltip('Options du membre'), findsNWidgets(2));
+      expect(find.descendant(of: find.byKey(const ValueKey('member-user-3')), matching: find.byTooltip('Options du membre')), findsNothing);
+
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('member-user-2')), matching: find.byTooltip('Options du membre')));
+      await settle(tester);
+      expect(find.text('Changer le rôle'), findsNothing);
+      expect(find.text('Retirer'), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5)); // dismiss the menu
+      await settle(tester);
+
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('member-${FakeHubClient.userId}')), matching: find.byTooltip('Options du membre')));
+      await settle(tester);
+      expect(find.text('Quitter la maison'), findsOneWidget);
+      expect(find.text('Retirer'), findsNothing);
+    });
+
+    testWidgets('the owner can transfer ownership from the role sheet', (tester) async {
+      final app = await pumpMe(tester, initialLocation: Routes.members(homeId));
+      // The owner cannot leave: no menu on the own row.
+      expect(find.byTooltip('Options du membre'), findsOneWidget);
+      await tester.tap(find.byTooltip('Options du membre'));
+      await settle(tester);
+      await tester.tap(find.text('Changer le rôle'));
+      await settle(tester);
+      expect(find.byKey(const Key('member-transfer-ownership')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('member-transfer-ownership')));
+      await settle(tester);
+      expect(find.text('Transférer la propriété à Bob ?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Transférer'));
+      await settle(tester);
+      expect(app.client.roleUpdates, [(userId: 'user-2', role: 'owner')]);
+      expect(find.text('Propriété transférée'), findsOneWidget);
     });
   });
 
@@ -421,6 +493,8 @@ void main() {
       await tester.tap(find.byKey(const Key('settings-realtime')));
       await settle(tester);
       expect(app.container.read(realtimeAlertsProvider).value, isFalse);
+      // The preference actually gates the realtime socket.
+      expect(app.container.read(realtimeActiveProvider), isFalse);
     });
 
     testWidgets('edits the hub URL with a connection test', (tester) async {

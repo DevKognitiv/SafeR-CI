@@ -83,12 +83,14 @@ class _WritableControl extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final label = capabilityLabel(context, cap);
+    // Same rule as the dedicated panels: no live controls on an offline device.
+    final enabled = device.online;
     switch (cap.type) {
       case 'bool':
         return SwitchListTile.adaptive(
           title: Text(label),
           value: device.boolValue(cap.code) ?? false,
-          onChanged: (v) => sendDeviceCommand(context, ref, device, cap.code, v),
+          onChanged: enabled ? (v) => sendDeviceCommand(context, ref, device, cap.code, v) : null,
         );
       case 'int':
       case 'float':
@@ -106,6 +108,7 @@ class _WritableControl extends ConsumerWidget {
             min: min,
             max: max,
             divisions: divisions,
+            enabled: enabled,
             onCommit: (v) => sendDeviceCommand(context, ref, device, cap.code, cap.type == 'int' ? v.round() : double.parse(v.toStringAsFixed(2))),
           ),
         );
@@ -126,7 +129,7 @@ class _WritableControl extends ConsumerWidget {
                     ChoiceChip(
                       label: Text(enumValueLabel(context, value)),
                       selected: current == value,
-                      onSelected: (_) => sendDeviceCommand(context, ref, device, cap.code, value),
+                      onSelected: enabled ? (_) => sendDeviceCommand(context, ref, device, cap.code, value) : null,
                     ),
                 ],
               ),
@@ -142,21 +145,23 @@ class _WritableControl extends ConsumerWidget {
             hue: (hsv['h'] as num?)?.round() ?? 0,
             saturation: (hsv['s'] as num?)?.round() ?? 100,
             value: (hsv['v'] as num?)?.round() ?? 100,
+            enabled: enabled,
             onChanged: (h, s) => sendDeviceCommand(context, ref, device, cap.code, {'h': h, 's': s, 'v': (hsv['v'] as num?)?.round() ?? 100}),
           ),
         );
       default:
-        return _TextCommandRow(device: device, cap: cap, label: label);
+        return _TextCommandRow(device: device, cap: cap, label: label, enabled: enabled);
     }
   }
 }
 
 class _TextCommandRow extends ConsumerStatefulWidget {
-  const _TextCommandRow({required this.device, required this.cap, required this.label});
+  const _TextCommandRow({required this.device, required this.cap, required this.label, this.enabled = true});
 
   final Device device;
   final Capability cap;
   final String label;
+  final bool enabled;
 
   @override
   ConsumerState<_TextCommandRow> createState() => _TextCommandRowState();
@@ -195,13 +200,14 @@ class _TextCommandRowState extends ConsumerState<_TextCommandRow> {
             Expanded(
               child: TextField(
                 controller: _controller,
+                enabled: widget.enabled,
                 decoration: InputDecoration(labelText: widget.label, isDense: true),
                 onSubmitted: (_) => _send(),
               ),
             ),
             IconButton(
               tooltip: context.tr(fr: 'Envoyer', en: 'Send'),
-              onPressed: _send,
+              onPressed: widget.enabled ? _send : null,
               icon: const Icon(Icons.send),
               constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             ),

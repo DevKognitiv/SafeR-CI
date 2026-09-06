@@ -261,6 +261,7 @@ def panel_routes(arming: str = "away", alarm: bool = False, zone1_alarm: bool = 
         ("PUT", "/ISAPI/SecurityCP/control/disarm/1"): control,
         ("PUT", "/ISAPI/SecurityCP/control/clearAlarm/1"): control,
         ("PUT", "/ISAPI/SecurityCP/control/bypass/2"): control,
+        ("PUT", "/ISAPI/SecurityCP/control/Recoverbypass/2"): control,
     }
 
 
@@ -595,8 +596,12 @@ async def test_arm_disarm_bypass_and_clear_commands(adapter: HikvisionAdapter):
     assert len(server.sent("PUT", "/ISAPI/SecurityCP/control/disarm/1")) == 1
     assert await adapter.send_command(zone_ref(2), "bypass", True, ctx) == {"bypass": True}
     bypass = server.sent("PUT", "/ISAPI/SecurityCP/control/bypass/2")[0]
-    assert json.loads(bypass.content) == {"BypassCtrl": {"bypass": True}}
-    assert bypass.params["format"] == "json" and bypass.headers["content-type"] == "application/json"
+    assert not bypass.content and bypass.params["format"] == "json"  # body-less control endpoint
+    # Clearing the bypass is a distinct endpoint (Recoverbypass), not a JSON flag on the bypass one
+    assert await adapter.send_command(zone_ref(2), "bypass", False, ctx) == {"bypass": False}
+    assert len(server.sent("PUT", "/ISAPI/SecurityCP/control/bypass/2")) == 1
+    recover = server.sent("PUT", "/ISAPI/SecurityCP/control/Recoverbypass/2")
+    assert len(recover) == 1 and not recover[0].content and recover[0].params["format"] == "json"
     assert (await adapter.send_command(panel_ref(), "alarm", False, ctx))["alarm"] is False
     assert len(server.sent("PUT", "/ISAPI/SecurityCP/control/clearAlarm/1")) == 1
     with pytest.raises(AdapterError) as exc:

@@ -1,10 +1,20 @@
+import 'package:safer_ci/core/api/api_exception.dart';
 import 'package:safer_ci/core/models/models.dart';
 
 import 'fake_hub_client.dart';
 
 /// FakeHubClient for the Scenes tab: records runs/toggles/tests and can pretend to be empty.
 class ScenesFakeHubClient extends FakeHubClient {
-  ScenesFakeHubClient({this.noScenes = false, this.noAutomations = false, this.noHomes = false});
+  ScenesFakeHubClient({this.noScenes = false, this.noAutomations = false, this.noHomes = false, this.role = 'owner'});
+
+  /// Role of the signed-in user in the demo home.
+  final String role;
+
+  /// When true, GET /homes/{id}/devices fails with a 500.
+  bool failDevices = false;
+
+  /// When true, GET /homes/{id}/scenes fails with a 500.
+  bool failScenes = false;
 
   /// When true, GET /homes/{id}/scenes returns nothing.
   final bool noScenes;
@@ -25,10 +35,25 @@ class ScenesFakeHubClient extends FakeHubClient {
   final List<String> triggerCalls = [];
 
   @override
-  Future<List<Home>> homes() async => noHomes ? const [] : super.homes();
+  Future<List<Home>> homes() async {
+    if (noHomes) return const [];
+    return [
+      for (final h in await super.homes())
+        Home(id: h.id, name: h.name, lat: h.lat, lon: h.lon, address: h.address, securityMode: h.securityMode, alarmActive: h.alarmActive, role: role, rooms: h.rooms, memberCount: h.memberCount, deviceCount: h.deviceCount),
+    ];
+  }
 
   @override
-  Future<List<Scene>> scenes(String homeId) async => noScenes ? const [] : super.scenes(homeId);
+  Future<List<Device>> devices(String homeId, {String? roomId, String? category, String? brand}) {
+    if (failDevices) throw ApiException('devices down', status: 500);
+    return super.devices(homeId, roomId: roomId, category: category, brand: brand);
+  }
+
+  @override
+  Future<List<Scene>> scenes(String homeId) async {
+    if (failScenes) throw ApiException('scenes down', status: 500);
+    return noScenes ? const [] : super.scenes(homeId);
+  }
 
   @override
   Future<List<Automation>> automations(String homeId) async => noAutomations ? const [] : super.automations(homeId);

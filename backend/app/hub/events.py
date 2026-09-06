@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger("safer.hub.events")
 
@@ -15,12 +15,14 @@ DEVICE_STATE = "device.state"
 DEVICE_EVENT = "device.event"
 DEVICE_ADDED = "device.added"
 DEVICE_REMOVED = "device.removed"
+DEVICE_UPDATED = "device.updated"  # re-pair changed config/credentials of an existing device
 MESSAGE_NEW = "message.new"
 SECURITY_MODE = "security.mode"
 SECURITY_ALARM = "security.alarm"
 SCENE_RAN = "scene.ran"
 SOS_RAISED = "sos.raised"
 TICK = "tick"
+MEMBER_REMOVED = "member.removed"  # internal: payload {"user_id": <removed user or None for everyone>}
 
 
 @dataclass
@@ -47,6 +49,7 @@ class EventBus:
     def __init__(self) -> None:
         self._subscribers: List[Subscriber] = []
         self._lock = asyncio.Lock()
+        self._tasks: Set["asyncio.Task[None]"] = set()
 
     def subscribe(self, callback: Subscriber) -> Callable[[], None]:
         """Register a subscriber; returns an unsubscribe function."""
@@ -74,7 +77,10 @@ class EventBus:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        loop.create_task(self.publish(event))
+        task = loop.create_task(self.publish(event))
+        # Keep a strong reference until delivery: asyncio only holds tasks weakly.
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     @property
     def subscriber_count(self) -> int:

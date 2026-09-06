@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../i18n.dart';
 import '../models/device.dart';
 import '../theme.dart';
 import 'icon_map.dart';
@@ -52,7 +53,7 @@ class DeviceTile extends StatelessWidget {
               Text(device.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
               Text(
-                device.online ? device.stateSummary : 'HORS LIGNE',
+                device.online ? deviceStateSummary(context, device) : context.tr(fr: 'HORS LIGNE', en: 'OFFLINE'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(color: alerting ? SafeRColors.danger : theme.colorScheme.onSurfaceVariant, fontWeight: alerting ? FontWeight.w700 : null),

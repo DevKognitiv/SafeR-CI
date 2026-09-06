@@ -1088,13 +1088,11 @@ class HikvisionAdapter(BrandAdapter):
         zone_id = _zone_of(device)
         if zone_id is None:
             raise AdapterError("Zone id missing from device config", "invalid_input")
-        bypass = _as_bool(value)
-        body = json.dumps({"BypassCtrl": {"bypass": bypass}}).encode()
-        response = await api.request(
-            "PUT", f"{PATH_CP_CONTROL}/bypass/{zone_id}", params={"format": "json"}, content=body,
-            headers={"Content-Type": "application/json"},
-        )
-        api.check_control(response, "bypass")
+        bypass = bool(_as_bool(value))
+        # Body-less control endpoints: ``bypass/{zone}`` sets the bypass, ``Recoverbypass/{zone}`` clears it.
+        action = "bypass" if bypass else "Recoverbypass"
+        response = await api.request("PUT", f"{PATH_CP_CONTROL}/{action}/{zone_id}", params={"format": "json"})
+        api.check_control(response, "bypass" if bypass else "recover bypass")
         return {"bypass": bypass}
 
     # ------------------------------------------------------------------ media

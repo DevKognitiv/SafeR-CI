@@ -1,8 +1,11 @@
 """Async SQLAlchemy database wrapper for the hub (SQLite for dev/tests, PostgreSQL in prod)."""
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
+
+logger = logging.getLogger("safer.hub.db")
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -56,3 +59,23 @@ class Database:
     async def dispose(self) -> None:
         """Dispose the engine."""
         await self.engine.dispose()
+
+
+async def rollback_and_restore(session: AsyncSession) -> None:
+    """Roll back, then re-load every persistent instance the session still holds.
+
+    ``Session.rollback()`` expires every object in the identity map (whatever ``expire_on_commit`` says), and an
+    expired attribute accessed outside a greenlet raises ``MissingGreenlet``. Request handlers keep using the
+    ``Home``/``Scene``/``User``/``Device`` rows they loaded before a failed adapter call, so restore them here.
+    """
+    instances = list(session.identity_map.values())
+    await session.rollback()
+    for instance in instances:
+        try:
+            await session.refresh(instance)
+        except Exception:  # pylint: disable=broad-except  # row deleted meanwhile: detach it instead
+            logger.debug("Could not restore %r after rollback", instance, exc_info=True)
+            try:
+                session.expunge(instance)
+            except Exception:  # pylint: disable=broad-except
+                pass

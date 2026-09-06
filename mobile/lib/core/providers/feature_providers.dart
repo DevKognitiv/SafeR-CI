@@ -77,9 +77,9 @@ class SecurityNotifier extends FamilyAsyncNotifier<SecurityState, String> {
   @override
   Future<SecurityState> build(String arg) async {
     ref.listen<AsyncValue<HubEvent>>(hubEventsProvider(arg), (_, next) {
-      final event = next.value;
+      final event = next.valueOrNull;
       if (event == null) return;
-      final current = state.value;
+      final current = state.valueOrNull;
       if (event.type == HubEvent.securityMode && event.mode != null) {
         if (current != null) state = AsyncData(current.copyWith(mode: event.mode, alarmActive: event.mode == 'disarmed' ? false : null));
         ref.read(homesProvider.notifier).patch(arg, (h) => h.copyWith(securityMode: event.mode));
@@ -97,7 +97,7 @@ class SecurityNotifier extends FamilyAsyncNotifier<SecurityState, String> {
   Future<void> refresh() async => state = await AsyncValue.guard(() => ref.read(hubClientProvider).security(arg));
 
   Future<void> setMode(String mode) async {
-    final previous = state.value;
+    final previous = state.valueOrNull;
     if (previous != null) state = AsyncData(previous.copyWith(mode: mode));
     try {
       state = AsyncData(await ref.read(hubClientProvider).setSecurityMode(arg, mode));
@@ -127,7 +127,7 @@ class MessagesNotifier extends FamilyAsyncNotifier<List<HubMessage>, String> {
   @override
   Future<List<HubMessage>> build(String arg) async {
     ref.listen<AsyncValue<HubEvent>>(hubEventsProvider(arg), (_, next) {
-      final event = next.value;
+      final event = next.valueOrNull;
       if (event?.type == HubEvent.messageNew && event?.message != null) {
         final message = HubMessage.fromJson(event!.message!);
         final current = state.valueOrNull ?? const <HubMessage>[];

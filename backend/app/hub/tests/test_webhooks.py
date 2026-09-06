@@ -15,7 +15,7 @@ from app.hub import events as ev
 from app.hub.adapters.registry import registry
 from app.hub.models import DeviceEvent, Integration, Message
 from app.hub.routes.webhooks import SECRET_HEADER
-from app.hub.tests.conftest import PREFIX
+from app.hub.tests.conftest import PREFIX, register_user
 from app.hub.tests.test_onboarding import BRAND, FakeCloudAdapter, pair
 
 WEBHOOKS = f"{PREFIX}/webhooks"
@@ -51,7 +51,7 @@ async def pir(client: httpx.AsyncClient, auth: Dict, home: Dict) -> Dict[str, An
     devices = (await pair(client, auth["headers"], "demo", home["id"])).json()["devices"]
     device = next(d for d in devices if d["external_id"] == "demo-pir-1")
     hook = (await client.get(f"{PREFIX}/devices/{device['id']}/webhook", headers=auth["headers"])).json()
-    return {"device": device, "secret": hook["secret"], "url": hook["url"]}
+    return {"device": device, "secret": hook["secret"], "url": hook["url"], "headers": auth["headers"]}
 
 
 async def device_events(client: httpx.AsyncClient, headers: Dict, device_id: str) -> List[Dict[str, Any]]:
@@ -280,3 +280,100 @@ async def test_generic_webhook_validation(client, auth, pir):
     response = await client.post(url, json={"online": "off"})
     assert response.status_code == 200
     assert (await get_device(client, auth["headers"], pir["device"]["id"]))["online"] is False
+
+
+# ----------------------------------------------------------------------------- tenant isolation
+@pytest_asyncio.fixture
+async def bob(client: httpx.AsyncClient) -> Dict[str, Any]:
+    """A second user with his own home (``{headers, home}``), never a member of Alice's home."""
+    data = await register_user(client, email="bob@safer.ci", name="Bob")
+    data["headers"] = {"Authorization": f"Bearer {data['token']}"}
+    response = await client.post(f"{PREFIX}/homes", json={"name": "Chez Bob"}, headers=data["headers"])
+    assert response.status_code == 201, response.text
+    data["home"] = response.json()
+    return data
+
+
+async def home_messages(client: httpx.AsyncClient, headers: Dict, home_id: str) -> List[str]:
+    response = await client.get(f"{PREFIX}/homes/{home_id}/messages", headers=headers)
+    assert response.status_code == 200, response.text
+    return [m["title"] for m in response.json()]
+
+
+async def test_generic_webhook_never_updates_another_home(client, auth, home, pir, bob, hub_app):
+    """Demo external ids are identical in every home: Alice's secret must only ever touch Alice's device."""
+    bob_devices = (await pair(client, bob["headers"], "demo", bob["home"]["id"])).json()["devices"]
+    bob_pir = next(d for d in bob_devices if d["external_id"] == "demo-pir-1")
+    bob_smoke = next(d for d in bob_devices if d["external_id"] == "demo-smoke-1")
+    assert bob_pir["external_id"] == pir["device"]["external_id"] and bob_pir["id"] != pir["device"]["id"]
+    assert (await client.post(f"{PREFIX}/homes/{bob['home']['id']}/security/mode", json={"mode": "armed_away"}, headers=bob["headers"])).status_code == 200
+    alarms = [e for e in []]
+    seen: List[ev.HubEvent] = []
+
+    async def _collect(event: ev.HubEvent) -> None:
+        seen.append(event)
+
+    unsubscribe = hub_app.state.hub_runtime.bus.subscribe(_collect)
+    try:
+        response = await client.post(pir["url"], json={"state": {"motion": True, "battery": 7}, "event": {"type": "tamper"}})
+        assert response.status_code == 200 and response.json()["accepted"] == 2
+        # Alice's smoke sensor secret must not reach Bob's identically named smoke sensor either
+        smoke = next(d["id"] for d in (await client.get(f"{PREFIX}/homes/{home['id']}/devices", headers=auth["headers"])).json() if d["external_id"] == "demo-smoke-1")
+        hook = (await client.get(f"{PREFIX}/devices/{smoke}/webhook", headers=auth["headers"])).json()
+        assert (await client.post(hook["url"], json={"state": {"smoke": True}})).status_code == 200
+    finally:
+        unsubscribe()
+    alice = await get_device(client, auth["headers"], pir["device"]["id"])
+    assert alice["state"]["motion"] is True and alice["state"]["battery"] == 7
+    assert [e["type"] for e in await device_events(client, auth["headers"], pir["device"]["id"])] == ["tamper", "motion"]
+    # Bob's home is untouched: state, events, messages, alarm and bus events
+    other = await get_device(client, bob["headers"], bob_pir["id"])
+    assert other["state"] == bob_pir["state"] and other["state"]["motion"] is False
+    assert await device_events(client, bob["headers"], bob_pir["id"]) == []
+    assert (await get_device(client, bob["headers"], bob_smoke["id"]))["state"]["smoke"] is False
+    assert not any(t.startswith(("Mouvement", "Fumée", "🚨")) for t in await home_messages(client, bob["headers"], bob["home"]["id"]))
+    security = (await client.get(f"{PREFIX}/homes/{bob['home']['id']}/security", headers=bob["headers"])).json()
+    assert security["alarm_active"] is False and security["alarm_device_id"] is None
+    assert all(e.home_id != bob["home"]["id"] for e in seen if e.type in (ev.DEVICE_STATE, ev.DEVICE_EVENT, ev.MESSAGE_NEW, ev.SECURITY_ALARM))
+    assert alarms == []
+
+
+async def test_brand_webhook_is_scoped_to_its_integration(client, auth, home, cloud, bob):
+    """Two homes paired with the same cloud account share external ids: a callback only updates its own integration."""
+    other = await pair(client, bob["headers"], BRAND, bob["home"]["id"])
+    assert other.status_code == 201, other.text
+    bob_plug = next(d for d in other.json()["devices"] if d["external_id"] == "plug-1")
+    bob_pir = next(d for d in other.json()["devices"] if d["external_id"] == "pir-1")
+    assert other.json()["integration_id"] != cloud["integration_id"]
+
+    body = callback({"device": "plug-1", "state": {"switch": True}}, {"device": "pir-1", "event": "tamper"})
+    response = await client.post(cloud["url"], json=body)
+    assert response.status_code == 200 and response.json() == {"accepted": 2, "ignored": 0}
+    assert (await get_device(client, auth["headers"], cloud["devices"]["plug-1"]["id"]))["state"]["switch"] is True
+    assert (await get_device(client, bob["headers"], bob_plug["id"]))["state"]["switch"] is False
+    assert await device_events(client, bob["headers"], bob_pir["id"]) == []
+    # and Bob's own webhook only reaches Bob's devices
+    hook = (await client.get(f"{PREFIX}/integrations/{other.json()['integration_id']}/webhook", headers=bob["headers"])).json()
+    assert (await client.post(hook["url"], json=callback({"device": "pir-1", "state": {"motion": True}}))).status_code == 200
+    assert (await get_device(client, bob["headers"], bob_pir["id"]))["state"]["motion"] is True
+    assert (await get_device(client, auth["headers"], cloud["devices"]["pir-1"]["id"]))["state"]["motion"] is False
+
+
+async def test_handle_push_scopes(hub_app, home, pir, bob, client):
+    """The service itself filters by device / integration / home; an unscoped push is applied everywhere (logged)."""
+    runtime = hub_app.state.hub_runtime
+    service = runtime.services["devices"]
+    bob_devices = (await pair(client, bob["headers"], "demo", bob["home"]["id"])).json()["devices"]
+    bob_pir = next(d for d in bob_devices if d["external_id"] == "demo-pir-1")
+    await service.handle_push("demo", "demo-pir-1", "state", {"state": {"battery": 1}}, home_id=bob["home"]["id"])
+    assert (await get_device(client, bob["headers"], bob_pir["id"]))["state"]["battery"] == 1
+    assert (await get_device(client, auth_headers(pir), pir["device"]["id"]))["state"]["battery"] == 78
+    await service.handle_push("demo", "demo-pir-1", "state", {"state": {"battery": 2}}, device_id=pir["device"]["id"])
+    assert (await get_device(client, bob["headers"], bob_pir["id"]))["state"]["battery"] == 1
+    # a wrong scope combination matches nothing
+    await service.handle_push("demo", "demo-pir-1", "state", {"state": {"battery": 3}}, home_id=bob["home"]["id"], device_id=pir["device"]["id"])
+    assert (await get_device(client, bob["headers"], bob_pir["id"]))["state"]["battery"] == 1
+
+
+def auth_headers(pir: Dict[str, Any]) -> Dict[str, str]:
+    return pir["headers"]

@@ -6,6 +6,7 @@ import 'package:safer_ci/core/widgets/widgets.dart';
 import 'package:safer_ci/features/home/home_screen.dart';
 import 'package:safer_ci/features/home/room_management_screen.dart';
 import 'package:safer_ci/features/home/widgets/alarm_banner.dart';
+import 'package:safer_ci/features/home/widgets/home_app_bar.dart';
 import 'package:safer_ci/features/home/widgets/offline_banner.dart';
 
 import 'helpers/fake_hub_client.dart';
@@ -158,6 +159,56 @@ void main() {
       await pumpAuthenticated(tester, const HomeScreen());
       expect(find.byType(OfflineBanner), findsNothing);
     });
+
+    testWidgets('a failed device list shows the error state with a working retry', (tester) async {
+      final client = HomeFakeHubClient()..failDevices = true;
+      await pumpAuthenticated(tester, const HomeScreen(), client: client);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ErrorView), findsOneWidget);
+      expect(find.byType(DeviceTile), findsNothing);
+      // The weather header degrades instead of taking the tab down with it.
+      expect(find.text('Maison Cocody'), findsOneWidget);
+      final before = client.devicesCalls;
+
+      client.failDevices = false;
+      await tester.tap(find.text('Réessayer'));
+      await settle(tester);
+      expect(client.devicesCalls, before + 1);
+      expect(find.byType(ErrorView), findsNothing);
+      expect(find.byType(DeviceTile), findsWidgets);
+    });
+
+    testWidgets('a failed weather request keeps the device grid and falls back to counts', (tester) async {
+      await pumpAuthenticated(tester, const HomeScreen(), client: HomeFakeHubClient()..failWeather = true);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DeviceTile), findsWidgets);
+      expect(find.text('12 appareils'), findsOneWidget);
+      expect(find.text('29.5°C'), findsNothing);
+    });
+
+    testWidgets('a failed unread-count request keeps the app bar (badge hidden)', (tester) async {
+      await pumpAuthenticated(tester, const HomeScreen(), client: HomeFakeHubClient()..failUnread = true);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(HomeAppBar), findsOneWidget);
+      expect(find.byType(MessageBell), findsOneWidget);
+      expect(find.byType(DeviceTile), findsWidgets);
+    });
+
+    testWidgets('members get no add menu, no rename/move actions and no add-device CTA', (tester) async {
+      await pumpAuthenticated(tester, const HomeScreen(), client: HomeFakeHubClient(role: 'member'));
+      expect(find.byType(AddMenuButton), findsNothing);
+      expect(find.byType(MessageBell), findsOneWidget);
+      await tester.longPress(find.text('Prise TV'));
+      await settle(tester);
+      expect(find.text("Paramètres de l'appareil"), findsOneWidget);
+      expect(find.text('Renommer'), findsNothing);
+      expect(find.text('Déplacer vers une pièce'), findsNothing);
+    });
+
+    testWidgets('admins keep the add menu', (tester) async {
+      await pumpAuthenticated(tester, const HomeScreen(), client: HomeFakeHubClient(role: 'admin'));
+      expect(find.byType(AddMenuButton), findsOneWidget);
+    });
   });
 
   group('RoomManagementScreen', () {
@@ -198,6 +249,24 @@ void main() {
       await settle(tester);
       expect(find.text('Chambre parents'), findsOneWidget);
       expect(client.rooms_.firstWhere((r) => r.id == 'room-2').name, 'Chambre parents');
+    });
+
+    testWidgets('members see a read-only list: no FAB, no drag handles, no actions', (tester) async {
+      await pumpAuthenticated(tester, const RoomManagementScreen(), client: HomeFakeHubClient(role: 'member'));
+      expect(find.text('Salon'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsNothing);
+      expect(find.byIcon(Icons.drag_handle), findsNothing);
+      expect(find.text('Seuls les administrateurs peuvent modifier les pièces.'), findsOneWidget);
+      await tester.tap(find.text('Chambre'));
+      await settle(tester);
+      expect(find.text('Renommer'), findsNothing);
+      expect(find.text('Supprimer'), findsNothing);
+    });
+
+    testWidgets('admins get the FAB and the drag handles', (tester) async {
+      await pumpAuthenticated(tester, const RoomManagementScreen(), client: HomeFakeHubClient(role: 'admin'));
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
     });
 
     testWidgets('deletes a room after confirmation', (tester) async {

@@ -60,6 +60,27 @@ class HomeManagementScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _leave(BuildContext context, WidgetRef ref, Home home) async {
+    final confirmed = await confirmDialog(
+      context,
+      title: context.tr(fr: 'Quitter « ${home.name} » ?', en: 'Leave "${home.name}"?'),
+      message: context.tr(
+        fr: "Vous n'aurez plus accès à cette maison ni à ses appareils. Un administrateur pourra vous réinviter.",
+        en: 'You will lose access to this home and its devices. An administrator can invite you again.',
+      ),
+      confirmLabel: context.tr(fr: 'Quitter', en: 'Leave'),
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    try {
+      await ref.read(homesProvider.notifier).leave(home.id);
+      if (!context.mounted) return;
+      showSnack(context, context.tr(fr: 'Vous avez quitté « ${home.name} »', en: 'You left "${home.name}"'));
+    } catch (e) {
+      if (context.mounted) showErrorSnack(context, errorMessage(e));
+    }
+  }
+
   void _select(BuildContext context, WidgetRef ref, Home home) {
     if (ref.read(currentHomeIdProvider) == home.id) return;
     ref.read(currentHomeIdProvider.notifier).set(home.id);
@@ -120,6 +141,7 @@ class HomeManagementScreen extends ConsumerWidget {
                   onMembers: () => context.push(Routes.members(home.id)),
                   onEdit: home.canManage ? () => _edit(context, ref, home) : null,
                   onDelete: home.isOwner ? () => _delete(context, ref, home) : null,
+                  onLeave: home.isOwner ? null : () => _leave(context, ref, home),
                 );
               },
             ),

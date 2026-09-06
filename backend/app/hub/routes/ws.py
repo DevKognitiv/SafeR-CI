@@ -7,6 +7,10 @@ events carrying ``home_id=None`` are broadcast to every connection. A ``hello`` 
 Client -> server: ``{"type": "ping"}`` -> ``{"type": "pong"}`` and ``{"type": "subscribe", "home_id": ...}`` to
 switch home without reconnecting (``home_id: null`` = every home of the user).
 
+Membership is re-checked while connected: the internal ``member.removed`` bus event (published when a member is
+removed / leaves / the home is deleted) drops the home from the connection's filter, and a socket pinned to that
+home is closed with 4403 so the client stops receiving that home's events immediately.
+
 Authentication failures close the socket with application codes 4401 (bad/missing token) and 4403 (not a member
 of the requested home). The socket is accepted before it is closed so real ASGI servers deliver the close code to
 the client (a close before ``accept`` degrades to a bare HTTP 403 handshake failure).
@@ -38,7 +42,7 @@ WS_UNAUTHORIZED = 4401
 WS_FORBIDDEN = 4403
 QUEUE_SIZE = 512  # outgoing frames buffered per connection before the slowest ones are dropped
 # Internal bus events that must never reach clients
-INTERNAL_EVENT_TYPES = {ev.TICK}
+INTERNAL_EVENT_TYPES = {ev.TICK, ev.MEMBER_REMOVED}
 
 
 class Connection:
@@ -52,6 +56,7 @@ class Connection:
         self.queue: "asyncio.Queue[Optional[Dict[str, Any]]]" = asyncio.Queue(maxsize=QUEUE_SIZE)
         self.sent = 0
         self.dropped = 0
+        self.close_code: Optional[int] = None
         self._sender: Optional["asyncio.Task[None]"] = None
         self._unsubscribe: Optional[Callable[[], None]] = None
 
@@ -64,10 +69,24 @@ class Connection:
 
     async def on_event(self, event: ev.HubEvent) -> None:
         """Bus subscriber: enqueue matching events (never blocks the publisher)."""
+        if event.type == ev.MEMBER_REMOVED:
+            self.revoke(event)
+            return
         if self.wants(event):
             self.enqueue(event.to_ws())
 
-    def enqueue(self, message: Dict[str, Any]) -> None:
+    def revoke(self, event: ev.HubEvent) -> None:
+        """Handle ``member.removed``: forget the home; close a socket pinned to it with 4403."""
+        target = event.payload.get("user_id")
+        if not event.home_id or (target is not None and target != self.user_id):
+            return
+        self.home_ids.discard(event.home_id)
+        if self.home_id == event.home_id:
+            self.enqueue({"type": "error", "detail": "Not a member of this home", "home_id": event.home_id})
+            self.close_code = WS_FORBIDDEN
+            self.enqueue(None)
+
+    def enqueue(self, message: Optional[Dict[str, Any]]) -> None:
         """Queue a frame for the sender task; drops (and counts) when the client is too slow."""
         try:
             self.queue.put_nowait(message)
@@ -87,6 +106,8 @@ class Connection:
             while True:
                 message = await self.queue.get()
                 if message is None:
+                    if self.close_code is not None:
+                        await self.websocket.close(code=self.close_code, reason="Not a member of this home")
                     return
                 await self.websocket.send_json(message)
                 self.sent += 1

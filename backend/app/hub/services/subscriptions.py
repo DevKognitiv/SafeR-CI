@@ -2,14 +2,18 @@
 
 For each brand whose adapter implements ``subscribe`` the manager builds ``DeviceRef``s (decrypted credentials,
 integration config, parent host) for all devices of that brand and hands them to the adapter, keeping the
-returned unsubscribe callable. ``device.added`` / ``device.removed`` bus events schedule a debounced ``resync``
-that only re-subscribes brands whose device set actually changed. ``stop()`` tears everything down.
+returned unsubscribe callable. Refs are handed to the adapter per home (``ctx_for(brand, home_id)``) so pushed
+events are applied to the right home only. ``device.added`` / ``device.updated`` / ``device.removed`` bus events
+schedule a debounced ``resync`` that only re-subscribes brands whose device set *or* connection data (host,
+credentials, integration...) actually changed. ``stop()`` tears everything down.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, FrozenSet, List, Optional
 
@@ -35,6 +39,17 @@ class Subscription:
     device_ids: FrozenSet[str]
     unsubscribe: Optional[Unsubscribe]
     created_at: datetime
+    fingerprint: FrozenSet[str] = field(default_factory=frozenset)
+
+
+def ref_fingerprint(ref: DeviceRef) -> str:
+    """Digest of everything an adapter binds at subscribe time (no plaintext credentials are kept)."""
+    material = {
+        "id": ref.id, "home": ref.home_id, "integration": ref.integration_id, "parent": ref.parent_external_id,
+        "config": ref.config, "credentials": ref.credentials, "integration_config": ref.integration_config,
+        "integration_credentials": ref.integration_credentials,
+    }
+    return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
 class SubscriptionManager:
@@ -129,22 +144,20 @@ class SubscriptionManager:
                 push_brands.add(brand)
                 refs = await self._refs_for(brand)
                 wanted = frozenset(ref.id for ref in refs)
+                fingerprint = frozenset(ref_fingerprint(ref) for ref in refs)
                 current = self._subscriptions.get(brand)
-                if current is not None and not force and current.device_ids == wanted:
+                if current is not None and not force and current.fingerprint == fingerprint:
                     continue
                 if current is not None:
                     await self._teardown(brand)
                 if not refs:
                     continue
-                try:
-                    unsubscribe = await adapter.subscribe(refs, self.runtime.ctx_for(brand))
-                except AdapterError as exc:
-                    logger.warning("Subscribe %s failed: %s [%s]", brand, exc.message, exc.code)
+                unsubscribe = await self._subscribe_per_home(adapter, refs)
+                if unsubscribe is None:
                     continue
-                except Exception:  # pylint: disable=broad-except
-                    logger.exception("Subscribe %s crashed", brand)
-                    continue
-                self._subscriptions[brand] = Subscription(brand=brand, device_ids=wanted, unsubscribe=unsubscribe, created_at=utcnow())
+                self._subscriptions[brand] = Subscription(
+                    brand=brand, device_ids=wanted, unsubscribe=unsubscribe, created_at=utcnow(), fingerprint=fingerprint,
+                )
                 changed += 1
                 logger.info("Subscribed %s for %d device(s)", brand, len(refs))
             # Adapters that disappeared from the registry (hot reload) lose their subscription
@@ -152,6 +165,33 @@ class SubscriptionManager:
                 await self._teardown(brand)
             self.resyncs += 1
             return changed
+
+    async def _subscribe_per_home(self, adapter: BrandAdapter, refs: List[DeviceRef]) -> Optional[Unsubscribe]:
+        """Call ``adapter.subscribe`` once per home with a home-bound context; returns a combined unsubscribe."""
+        brand = adapter.brand_id
+        groups: Dict[Optional[str], List[DeviceRef]] = {}
+        for ref in refs:
+            groups.setdefault(ref.home_id, []).append(ref)
+        unsubscribes: List[Unsubscribe] = []
+        for home_id, group in groups.items():
+            try:
+                unsubscribe = await adapter.subscribe(group, self.runtime.ctx_for(brand, home_id))
+            except AdapterError as exc:
+                logger.warning("Subscribe %s (home %s) failed: %s [%s]", brand, home_id, exc.message, exc.code)
+                continue
+            except Exception:  # pylint: disable=broad-except
+                logger.exception("Subscribe %s (home %s) crashed", brand, home_id)
+                continue
+            if unsubscribe is not None:
+                unsubscribes.append(unsubscribe)
+        if not unsubscribes:
+            return None
+
+        async def _unsubscribe_all() -> None:
+            for unsubscribe in unsubscribes:
+                await unsubscribe()
+
+        return _unsubscribe_all
 
     async def _teardown(self, brand: str) -> None:
         subscription = self._subscriptions.pop(brand, None)
@@ -169,9 +209,9 @@ class SubscriptionManager:
 
     # ------------------------------------------------------------------ bus
     async def _on_event(self, event: ev.HubEvent) -> None:
-        if event.type not in (ev.DEVICE_ADDED, ev.DEVICE_REMOVED):
+        if event.type not in (ev.DEVICE_ADDED, ev.DEVICE_UPDATED, ev.DEVICE_REMOVED):
             return
-        if event.type == ev.DEVICE_ADDED:
+        if event.type in (ev.DEVICE_ADDED, ev.DEVICE_UPDATED):
             brand = (event.payload.get("device") or {}).get("brand")
             adapter = registry.get(brand) if brand else None
             if adapter is not None and not adapter.supports_push:

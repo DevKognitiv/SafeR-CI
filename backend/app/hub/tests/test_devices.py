@@ -306,6 +306,24 @@ async def test_refresh_unreachable_marks_offline(client, auth, home, hub_app, fa
     assert response.status_code == 200 and response.json()["online"] is True and response.json()["state"]["switch"] is True
 
 
+async def test_unreachable_refresh_keeps_last_seen_at(client, auth, home, hub_app, fake_adapters):
+    """``last_seen_at`` is the last real contact: a failed poll must not bump it (the app shows "Last seen")."""
+    poll, _ = fake_adapters
+    (device,) = await materialize(hub_app, home["id"], "fakepoll", PairResult(devices=[draft("fp-1")]))
+    ok = await client.post(f"{PREFIX}/devices/{device['id']}/refresh", headers=auth["headers"])
+    assert ok.status_code == 200
+    last_seen = ok.json()["last_seen_at"]
+    assert last_seen is not None
+    poll.fail_with = "unreachable"
+    for _ in range(2):  # the poller repeats this every cycle
+        assert (await client.post(f"{PREFIX}/devices/{device['id']}/refresh", headers=auth["headers"])).status_code == 502
+    current = (await client.get(f"{PREFIX}/devices/{device['id']}", headers=auth["headers"])).json()
+    assert current["online"] is False and current["last_seen_at"] == last_seen
+    poll.fail_with = None
+    back = (await client.post(f"{PREFIX}/devices/{device['id']}/refresh", headers=auth["headers"])).json()
+    assert back["online"] is True and back["last_seen_at"] > last_seen
+
+
 # ----------------------------------------------------------------------------- commands
 async def test_command_validation(client, auth, devices):
     light, plug = devices["demo-light-1"], devices["demo-plug-1"]
@@ -579,3 +597,51 @@ async def test_subscription_manager_without_devices_and_with_failing_adapter(hub
     assert manager.subscription("fakepush").device_ids and len(push.subscriptions) == 1
     await manager.stop()
     assert push.unsubscribed == 1
+
+
+async def test_subscription_manager_resubscribes_when_a_device_is_repaired(hub_app, home, fake_adapters):
+    """Re-pairing with a new password/host keeps the device id: the live subscription must still be renewed."""
+    runtime = hub_app.state.hub_runtime
+    _, push = fake_adapters
+    (first,) = await materialize(
+        hub_app, home["id"], "fakepush",
+        PairResult(devices=[draft("push-a", credentials={"token": "old"}, config={"host": "10.0.0.5"})]),
+    )
+    manager = SubscriptionManager(runtime, debounce=0.05)
+    await manager.start()
+    assert len(push.subscriptions) == 1 and push.subscriptions[0][0].credentials == {"token": "old"}
+    (again,) = await materialize(
+        hub_app, home["id"], "fakepush",
+        PairResult(devices=[draft("push-a", credentials={"token": "new"}, config={"host": "10.0.0.99"})]),
+    )
+    assert again["id"] == first["id"]  # upsert, same row
+    await wait_until(lambda: len(push.subscriptions) == 2)
+    await wait_until(lambda: not manager.resync_pending)
+    (ref,) = push.subscriptions[1]
+    assert push.unsubscribed == 1 and ref.credentials == {"token": "new"} and ref.cfg("host") == "10.0.0.99"
+    assert ref.home_id == home["id"]
+    # identical data: nothing to renew
+    await materialize(hub_app, home["id"], "fakepush", PairResult(devices=[draft("push-a", credentials={"token": "new"}, config={"host": "10.0.0.99"})]))
+    await asyncio.sleep(0.12)
+    await wait_until(lambda: not manager.resync_pending)
+    assert len(push.subscriptions) == 2 and await manager.resync() == 0
+    await manager.stop()
+
+
+async def test_subscriptions_are_opened_per_home(client, hub_app, home, auth, fake_adapters):
+    """Refs of two homes go to the adapter separately with home-bound contexts, so pushes cannot cross homes."""
+    runtime = hub_app.state.hub_runtime
+    _, push = fake_adapters
+    other = (await client.post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=auth["headers"])).json()
+    (mine,) = await materialize(hub_app, home["id"], "fakepush", PairResult(devices=[draft("shared-id")]))
+    (theirs,) = await materialize(hub_app, other["id"], "fakepush", PairResult(devices=[draft("shared-id")]))
+    manager = SubscriptionManager(runtime, debounce=0)
+    await manager.start()
+    assert manager.subscribed_brands == ["fakepush"] and len(push.subscriptions) == 2
+    assert sorted(refs[0].home_id for refs in push.subscriptions) == sorted([home["id"], other["id"]])
+    # emitting through the home-bound context of ``other`` only touches that home's device
+    await runtime.ctx_for("fakepush", other["id"]).emit("state", "shared-id", {"state": {"switch": True}, "online": True})
+    assert (await client.get(f"{PREFIX}/devices/{theirs['id']}", headers=auth["headers"])).json()["state"]["switch"] is True
+    assert (await client.get(f"{PREFIX}/devices/{mine['id']}", headers=auth["headers"])).json()["state"]["switch"] is False
+    await manager.stop()
+    assert push.unsubscribed == 2

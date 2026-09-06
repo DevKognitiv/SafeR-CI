@@ -108,6 +108,7 @@ class LightPanel extends ConsumerWidget {
                     hue: (hsv?['h'] as num?)?.round() ?? 0,
                     saturation: (hsv?['s'] as num?)?.round() ?? 100,
                     value: (hsv?['v'] as num?)?.round() ?? (device.numValue('brightness')?.round() ?? 100),
+                    enabled: enabled,
                     onChanged: (h, s) => sendDeviceCommand(context, ref, device, 'color', {'h': h, 's': s, 'v': (hsv?['v'] as num?)?.round() ?? 100}),
                   ),
               ],

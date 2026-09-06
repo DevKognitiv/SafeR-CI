@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
@@ -34,9 +34,13 @@ class FakeDeviceService:
 
     def __init__(self) -> None:
         self.pushes: List[Tuple[str, str, str, Dict[str, Any]]] = []
+        self.scopes: List[Optional[str]] = []  # home_id passed with every push
 
-    async def handle_push(self, brand: str, external_id: str, event_type: str, payload: Dict[str, Any]) -> None:
+    async def handle_push(
+        self, brand: str, external_id: str, event_type: str, payload: Dict[str, Any], *, home_id: Optional[str] = None, **_: Any
+    ) -> None:
         self.pushes.append((brand, external_id, event_type, payload))
+        self.scopes.append(home_id)
 
     def states(self, external_id: str) -> List[Dict[str, Any]]:
         return [p["state"] for _, ext, kind, p in self.pushes if kind == "state" and ext == external_id]
@@ -278,6 +282,22 @@ async def test_handle_line_keepalive_and_unsupported(receiver: SiaReceiver, runt
     # No device service: frames are still acknowledged
     lonely = SiaReceiver(type("R", (), {"settings": make_settings(), "services": {}})(), port=0)
     assert parse_frame(await lonely.handle_line(encode_frame("SIA-DCS", 1, 0, 0, "1234", "#1234|NBA01"))).msg_type == "ACK"
+
+
+async def test_pushes_are_scoped_to_the_bound_home():
+    """HUB_SIA_ACCOUNTS binds an account to one home: its events must never fan out to other homes."""
+    bound = SiaReceiver(FakeRuntime(HUB_SIA_ACCOUNTS="1234:home-a, abcd:home-b"), port=0)
+    devices: FakeDeviceService = bound.runtime.services["devices"]
+    assert bound.account_homes == {"1234": "home-a", "ABCD": "home-b"} and bound.home_for("abcd") == "home-b"
+    await bound.handle_line(encode_frame("NULL", 1, 0, 0, "1234", "", STAMP))
+    await bound.handle_line(encode_frame("SIA-DCS", 2, 0, 0, "abcd", "#abcd|Nri1/BA01", STAMP))
+    assert [(ext, scope) for (_, ext, _, _), scope in zip(devices.pushes, devices.scopes)] == [
+        ("sia:1234", "home-a"), ("sia:ABCD", "home-b"), ("sia:ABCD", "home-b"),
+    ]
+    # Without a binding the receiver cannot know the home (pairing guarantees the account is unique)
+    loose = SiaReceiver(FakeRuntime(), port=0)
+    await loose.handle_line(encode_frame("NULL", 3, 0, 0, "1234", "", STAMP))
+    assert loose.runtime.services["devices"].scopes == [None] and loose.home_for("1234") is None
 
 
 async def test_build_ack_echoes_frame():
