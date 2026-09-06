@@ -543,8 +543,8 @@ def _zone_label(event: SiaEvent) -> str:
     if event.text:
         return event.text
     if event.zone:
-        digits = event.zone.lstrip("0") or "0" if event.zone.isdigit() else event.zone
-        return f"Zone {digits}"
+        label = (event.zone.lstrip("0") or "0") if event.zone.isdigit() else event.zone
+        return f"Zone {label}"
     return ""
 
 
