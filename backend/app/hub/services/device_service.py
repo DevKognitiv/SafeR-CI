@@ -359,6 +359,8 @@ class DeviceService:
         home_id, device_id = device.home_id, device.id
         for child in children:
             await session.delete(child)
+        # Flush child deletes first so the SQLite FK cascade does not race the ORM delete.
+        await session.flush()
         await session.delete(device)
         await session.commit()
         await self.runtime.bus.publish(ev.HubEvent(ev.DEVICE_REMOVED, home_id=home_id, device_id=device_id))
