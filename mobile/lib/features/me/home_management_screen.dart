@@ -126,15 +126,17 @@ class HomeManagementScreen extends ConsumerWidget {
           );
         },
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: FilledButton.icon(
-          key: const Key('homes-create'),
-          onPressed: () => _create(context, ref),
-          icon: const Icon(Icons.add),
-          label: Text(context.tr(fr: 'Créer une maison', en: 'Create a home')),
-        ),
-      ),
+      bottomNavigationBar: (homes.valueOrNull?.isEmpty ?? true)
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton.icon(
+                key: const Key('homes-create'),
+                onPressed: () => _create(context, ref),
+                icon: const Icon(Icons.add),
+                label: Text(context.tr(fr: 'Créer une maison', en: 'Create a home')),
+              ),
+            ),
     );
   }
 }
