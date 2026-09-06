@@ -53,8 +53,6 @@ class PairingFormState extends State<PairingForm> {
   final Set<String> _revealed = {};
   bool _autovalidate = false;
 
-  static bool _isTextual(FormFieldSpec f) => f.type != 'toggle' && f.type != 'select';
-
   @override
   void initState() {
     super.initState();

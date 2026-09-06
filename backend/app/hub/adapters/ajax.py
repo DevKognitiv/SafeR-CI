@@ -654,7 +654,7 @@ def _keyword_updates(code: str, name: str, category: Optional[str]) -> Tuple[Dic
         if detection:
             hub_state["triggered_zone"] = name
             hub_events.append("alarm")
-            if category and category in DETECTION_CODES and DETECTION_CODES[category] not in device_state:
+            if category in DETECTION_CODES and not device_state:
                 device_state[DETECTION_CODES[category]] = True
     if tokens & {"SWITCH", "SWITCHED", "SOCKET", "RELAY", "OUTLET"} and (on or off):
         device_state["switch"] = on and not off
