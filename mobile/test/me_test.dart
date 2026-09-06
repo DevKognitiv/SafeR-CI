@@ -364,12 +364,14 @@ void main() {
       expect(find.text('Messages marqués comme lus'), findsOneWidget);
       // Only the current tab was affected.
       expect((await app.client.unreadCount(homeId)).notice, 1);
+      await clearSnacks(tester);
 
       await tester.drag(find.byType(MessageTile), const Offset(-600, 0));
       await settle(tester);
       expect(find.text('Mouvement détecté — Détecteur couloir'), findsNothing);
       expect(find.text('Message supprimé'), findsOneWidget);
       expect(find.text('Aucune alarme'), findsOneWidget);
+      await clearSnacks(tester);
 
       await tester.tap(find.text('Notifications'));
       await settle(tester);
