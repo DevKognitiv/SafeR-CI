@@ -1062,6 +1062,14 @@ class TuyaAdapter(BrandAdapter):
         if cloud.token is not None:
             self._tokens[cloud.access_id] = cloud.token
 
+    @staticmethod
+    async def _persist_token(device: DeviceRef, cloud: TuyaCloudClient, before: Optional[TokenBundle], ctx: AdapterContext) -> None:
+        """Write a rotated access/refresh token back to the integration so it survives restarts."""
+        token = cloud.token
+        if token is None or token is before:
+            return
+        await ctx.update_integration_credentials(device.integration_id, token.as_credentials())
+
     def _cloud_from_ref(self, device: DeviceRef) -> Tuple[str, str, str, Dict[str, Any]]:
         region = str(device.cfg("region") or "").lower()
         access_id = str(device.cfg("access_id") or device.cred("access_id") or "")
@@ -1199,6 +1207,7 @@ class TuyaAdapter(BrandAdapter):
         device_id = str(device.cfg("device_id") or device.external_id)
         async with ctx.http(base_url=base_url) as client:
             cloud = self._cloud_client(client, access_id, access_secret, credentials)
+            before = cloud.token
             try:
                 detail = await cloud.get_device(device_id)
                 status = detail.get("status")
@@ -1207,6 +1216,7 @@ class TuyaAdapter(BrandAdapter):
                 online = bool(detail.get("online", True))
             finally:
                 self._remember(cloud)
+        await self._persist_token(device, cloud, before, ctx)
         state = map_status(status, device.category, device.cfg("functions") or {})
         self._apply_inversion(device, state)
         return DeviceState(online=online, state=state)
@@ -1246,10 +1256,12 @@ class TuyaAdapter(BrandAdapter):
         device_id = str(device.cfg("device_id") or device.external_id)
         async with ctx.http(base_url=base_url) as client:
             cloud = self._cloud_client(client, access_id, access_secret, credentials)
+            before = cloud.token
             try:
                 await cloud.send_commands(device_id, commands)
             finally:
                 self._remember(cloud)
+        await self._persist_token(device, cloud, before, ctx)
         return {} if code == "ptz" else {code: value}
 
     async def _command_local(self, device: DeviceRef, code: str, value: Any) -> Dict[str, Any]:
@@ -1280,10 +1292,12 @@ class TuyaAdapter(BrandAdapter):
         kind = "hls" if quality == "sub" else "rtsp"
         async with ctx.http(base_url=base_url) as client:
             cloud = self._cloud_client(client, access_id, access_secret, credentials)
+            before = cloud.token
             try:
                 url = await cloud.stream_url(str(device.cfg("device_id") or device.external_id), kind)
             finally:
                 self._remember(cloud)
+        await self._persist_token(device, cloud, before, ctx)
         if not url:
             return None
         return StreamInfo(url=url, type=kind)

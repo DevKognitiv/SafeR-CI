@@ -95,3 +95,30 @@ async def test_health(client):
     body = response.json()
     assert body["status"] == "ok"
     assert "demo" in body["adapters"]
+
+
+@pytest.mark.asyncio
+async def test_adapter_context_persists_rotated_credentials(hub_app, home):
+    """``ctx.update_integration_credentials`` merges rotated tokens into ``Integration.credentials_enc``."""
+    from app.hub.models import Integration  # pylint: disable=import-outside-toplevel
+
+    runtime = hub_app.state.hub_runtime
+    async with runtime.db.session() as session:
+        integration = Integration(
+            home_id=home["id"], brand="tuya", key="tuya_cloud:abc", name="Tuya", config={"region": "eu"},
+            credentials_enc=runtime.vault.encrypt({"access_secret": "s3", "access_token": "old"}),
+        )
+        session.add(integration)
+        await session.commit()
+        integration_id = integration.id
+
+    ctx = runtime.ctx_for("tuya")
+    await ctx.update_integration_credentials(integration_id, {"access_token": "new", "refresh_token": "r1", "expires_at": 42})
+    await ctx.update_integration_credentials(None, {"access_token": "ignored"})  # no integration -> no-op
+    await ctx.update_integration_credentials("missing", {"access_token": "ignored"})  # unknown id -> no-op
+    async with runtime.db.session() as session:
+        stored = await session.get(Integration, integration_id)
+        assert runtime.vault.decrypt(stored.credentials_enc) == {"access_secret": "s3", "access_token": "new", "refresh_token": "r1", "expires_at": 42}
+
+    # Plain contexts (adapter unit tests) have no persistence hook and stay silent.
+    await AdapterContext().update_integration_credentials(integration_id, {"access_token": "x"})

@@ -406,6 +406,11 @@ def device_draft(device: Dict[str, Any], hub_id: str) -> DeviceDraft:
 
 
 # =============================================================================== cloud client
+def _session_tokens(session: "AjaxSession") -> Tuple[str, str, str]:
+    """Rotating fields of a session (used to detect token refreshes)."""
+    return (session.session_token, session.refresh_token, session.user_id)
+
+
 @dataclass
 class AjaxSession:
     """Credentials + tokens of one Ajax account (mutable: tokens rotate)."""
@@ -827,6 +832,16 @@ class AjaxAdapter(BrandAdapter):
     def _forget(self, session: AjaxSession) -> None:
         self._sessions.pop(session.key, None)
 
+    @staticmethod
+    async def _persist_session(device: DeviceRef, session: AjaxSession, before: Tuple[str, str, str], ctx: AdapterContext) -> None:
+        """Write rotated session/refresh tokens back to the integration so they survive restarts."""
+        if _session_tokens(session) == before:
+            return
+        await ctx.update_integration_credentials(
+            device.integration_id,
+            {"session_token": session.session_token, "refresh_token": session.refresh_token, "user_id": session.user_id},
+        )
+
     async def _login_session(self, payload: Dict[str, Any], client: httpx.AsyncClient, ctx: AdapterContext) -> AjaxClient:
         require(payload, "api_key", "login", "password")
         base_url = _as_str(payload.get("base_url")).rstrip("/") or DEFAULT_BASE_URL
@@ -941,6 +956,7 @@ class AjaxAdapter(BrandAdapter):
         if device.protocol == PROTOCOL_SIA:
             return DeviceState(online=True, state=dict(device.state))
         session = self._session_for(device)
+        before = _session_tokens(session)
         hub_id = _as_str(device.cfg("hub_id")) or device.external_id
         async with ctx.http() as client:
             api = AjaxClient(client, session, ctx.logger)
@@ -959,6 +975,7 @@ class AjaxAdapter(BrandAdapter):
                 if exc.code == "auth_failed":
                     self._forget(session)
                 raise
+        await self._persist_session(device, session, before, ctx)
         return DeviceState(online=online, state=state)
 
     # ------------------------------------------------------------------ commands
@@ -966,18 +983,23 @@ class AjaxAdapter(BrandAdapter):
         if device.protocol == PROTOCOL_SIA:
             raise AdapterError("SIA is one-way; arm from the Ajax app", "unsupported")
         session = self._session_for(device)
+        before = _session_tokens(session)
+        result: Optional[Dict[str, Any]] = None
         async with ctx.http() as client:
             api = AjaxClient(client, session, ctx.logger)
             try:
                 if code == "arm_mode":
-                    return await self._arm(api, device, value)
-                if code == "switch" and device.category in ("plug", "switch"):
-                    return await self._switch(api, device, value)
+                    result = await self._arm(api, device, value)
+                elif code == "switch" and device.category in ("plug", "switch"):
+                    result = await self._switch(api, device, value)
             except AdapterError as exc:
                 if exc.code == "auth_failed":
                     self._forget(session)
                 raise
-        raise AdapterError(f"'{code}' cannot be written on this Ajax device", "unsupported")
+        await self._persist_session(device, session, before, ctx)
+        if result is None:
+            raise AdapterError(f"'{code}' cannot be written on this Ajax device", "unsupported")
+        return result
 
     async def _arm(self, api: AjaxClient, device: DeviceRef, value: Any) -> Dict[str, Any]:
         mode = _as_str(value)
