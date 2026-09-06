@@ -146,6 +146,9 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen> with WidgetsBinding
   }
 
   Future<void> _enterManually() async {
+    // A typed code must always be accepted, even right after an unrecognised scan.
+    _rearm?.cancel();
+    _handling = false;
     final code = await showDialog<String>(context: context, builder: (_) => const _ManualCodeDialog());
     if (!mounted || code == null) return;
     await _onCode(code);
