@@ -183,9 +183,13 @@ async def test_member_can_use_message_center(client, auth, home, seeded):
     bob["headers"] = {"Authorization": f"Bearer {bob['token']}"}
     response = await client.post(f"{PREFIX}/homes/{home['id']}/members", json={"email": "bob@safer.ci", "role": "member"}, headers=auth["headers"])
     assert response.status_code == 201, response.text
-    assert len(await listing(client, bob, home["id"])) == 6
+    visible = await listing(client, bob, home["id"])
+    assert {row["title"] for row in seeded} <= {m["title"] for m in visible}  # (+ the "new member" home message)
     assert (await client.post(f"{PREFIX}/messages/{seeded[0]['id']}/read", headers=bob["headers"])).status_code == 200
-    assert (await client.post(f"{PREFIX}/homes/{home['id']}/messages/read-all", headers=bob["headers"])).json() == {"updated": 4}
+    remaining = (await unread(client, bob, home["id"]))["total"]
+    assert remaining == len([m for m in visible if not m["read"]]) - 1
+    assert (await client.post(f"{PREFIX}/homes/{home['id']}/messages/read-all", headers=bob["headers"])).json() == {"updated": remaining}
+    assert (await unread(client, auth, home["id"]))["total"] == 0  # read state is per home, shared by members
 
 
 async def test_messages_created_by_device_events_are_listed(client, auth, home, hub_app):
