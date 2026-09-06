@@ -88,7 +88,7 @@ void main() {
       await settle(tester);
       expect(r.client.securityMode, 'armed_away');
       expect(find.text('Absent'), findsAtLeastNWidgets(2));
-      expect(find.text('Désarmé'), findsAtMostNWidgets(2));
+      expect(tester.widget<Text>(find.byKey(const Key('security-current-mode'))).data, 'Absent');
       expect(find.text('Mode « Absent » activé'), findsOneWidget);
       expect(r.container.read(currentHomeProvider)?.securityMode, 'armed_away');
     });
