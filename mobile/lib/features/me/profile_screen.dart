@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n.dart';
+import '../../core/models/user.dart';
 import '../../core/providers/providers.dart';
 import '../../core/widgets/widgets.dart';
 import 'widgets/me_common.dart';
@@ -16,18 +17,16 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name;
-  late final TextEditingController _phone;
-  late String _locale;
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  String _locale = 'fr';
+  bool _touched = false;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    final user = ref.read(authProvider).user;
-    _name = TextEditingController(text: user?.name ?? '');
-    _phone = TextEditingController(text: user?.phone ?? '');
-    _locale = user?.locale == 'en' ? 'en' : 'fr';
+    _syncFrom(ref.read(authProvider).user);
   }
 
   @override
@@ -36,6 +35,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _phone.dispose();
     super.dispose();
   }
+
+  /// Fill the fields from the account (initially, and when the session is restored after first build).
+  void _syncFrom(User? user) {
+    if (user == null) return;
+    _name.text = user.name;
+    _phone.text = user.phone ?? '';
+    _locale = user.locale == 'en' ? 'en' : 'fr';
+  }
+
+  void _markTouched() => setState(() => _touched = true);
 
   bool get _dirty {
     final user = ref.read(authProvider).user;
@@ -59,6 +68,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<User?>(authProvider.select((s) => s.user), (previous, next) {
+      if (previous == null && next != null && !_touched) setState(() => _syncFrom(next));
+    });
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final user = ref.watch(authProvider).user;
@@ -76,7 +88,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       body: Form(
         key: _formKey,
-        onChanged: () => setState(() {}),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
@@ -103,6 +114,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               controller: _name,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
+              onChanged: (_) => _markTouched(),
               decoration: InputDecoration(labelText: context.tr(fr: 'Nom complet', en: 'Full name'), prefixIcon: const Icon(Icons.person_outline)),
               validator: (v) => (v ?? '').trim().isEmpty ? context.tr(fr: 'Saisissez votre nom', en: 'Enter your name') : null,
             ),
@@ -112,6 +124,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               controller: _phone,
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.done,
+              onChanged: (_) => _markTouched(),
               onFieldSubmitted: (_) => _save(),
               decoration: InputDecoration(
                 labelText: context.tr(fr: 'Téléphone (facultatif)', en: 'Phone (optional)'),
@@ -127,7 +140,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ButtonSegment(value: 'en', label: Text(context.tr(fr: 'English', en: 'English')), icon: const Icon(Icons.translate)),
               ],
               selected: {_locale},
-              onSelectionChanged: (selection) => setState(() => _locale = selection.first),
+              onSelectionChanged: (selection) => setState(() {
+                _locale = selection.first;
+                _touched = true;
+              }),
             ),
             const SizedBox(height: 8),
             Text(

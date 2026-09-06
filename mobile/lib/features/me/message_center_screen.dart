@@ -123,18 +123,12 @@ class _MessageCenterScreenState extends ConsumerState<MessageCenterScreen> with 
           tabs: [
             for (final kind in kMessageKinds)
               Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(messageKindLabel(context, kind)),
-                    if (all.any((m) => m.kind == kind && !m.read)) ...[
-                      const SizedBox(width: 6),
-                      Badge.count(
-                        count: all.where((m) => m.kind == kind && !m.read).length,
-                        backgroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                    ],
-                  ],
+                child: Badge.count(
+                  count: all.where((m) => m.kind == kind && !m.read).length,
+                  isLabelVisible: all.any((m) => m.kind == kind && !m.read),
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  offset: const Offset(14, -6),
+                  child: Text(messageKindLabel(context, kind), maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
                 ),
               ),
           ],

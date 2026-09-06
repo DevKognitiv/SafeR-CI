@@ -108,7 +108,7 @@ async def test_create_list_get_scenes(client, auth, home, devices):
     assert (await client.get(f"{PREFIX}/homes/{home['id']}/scenes", headers=headers)).status_code == 404
 
 
-async def test_scene_validation(client, auth, home, devices):
+async def test_scene_validation(client, auth, home, devices, hub_app):
     url = f"{PREFIX}/homes/{home['id']}/scenes"
     plug, door = devices["demo-plug-1"], devices["demo-door-1"]
 
@@ -127,7 +127,7 @@ async def test_scene_validation(client, auth, home, devices):
     # Referential errors are 400
     other = await client.post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=auth["headers"])
     assert other.status_code == 201
-    foreign = await pair_demo(client._transport.app, other.json()["id"])  # pylint: disable=protected-access
+    foreign = await pair_demo(hub_app, other.json()["id"])
     response = await post([{"type": "device_command", "device_id": foreign["demo-plug-1"]["id"], "code": "switch", "value": True}])
     assert response.status_code == 400 and foreign["demo-plug-1"]["id"] in response.json()["detail"]
     response = await post([{"type": "device_command", "device_id": "missing-device", "code": "switch", "value": True}])
@@ -279,9 +279,11 @@ async def test_run_scene_collects_errors_per_action(client, auth, home, devices,
 async def test_delay_action_is_capped(client, auth, home, hub_app, monkeypatch):
     runtime = hub_app.state.hub_runtime
     slept: List[float] = []
+    real_sleep = runner_module.asyncio.sleep
 
     async def fake_sleep(seconds: float) -> None:
         slept.append(seconds)
+        await real_sleep(0)  # keep yielding to the loop for everything else that sleeps during the test
 
     monkeypatch.setattr(runner_module.asyncio, "sleep", fake_sleep)
     scene = await create_scene(client, auth, home, "Pause", [
@@ -353,7 +355,7 @@ async def test_run_scene_recursion_limit(client, auth, home, devices, hub_app):
     assert node["status"] == "error" and node["code"] == "invalid_input" and "nesting" in node["error"]
     assert last is not None and last["status"] == "error"
     # Every scene that ran published scene.ran, innermost first, and the loop terminated
-    assert [e.payload["name"] for e in ran] == ["B", "A", "B", "A"][: len(ran)] and len(ran) == 4
+    assert [e.payload["name"] for e in ran] == ["B", "A", "B", "A"]
     assert (await get_device(client, auth, light["id"]))["state"]["brightness"] == 5
 
 
