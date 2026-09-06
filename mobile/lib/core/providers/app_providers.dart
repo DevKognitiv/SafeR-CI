@@ -41,6 +41,13 @@ final hubClientProvider = Provider<HubClient>((ref) {
   return HubClient(baseUrl: url, tokenProvider: () => ref.read(tokenProvider));
 });
 
+/// Reachability check of an arbitrary hub URL (see [HubClient.probe]).
+typedef HubProbe = Future<bool> Function(String baseUrl);
+
+/// Side-effect-free probe used by "Tester la connexion" before a URL is saved.
+/// Overridden in widget tests so no network is touched.
+final hubProbeProvider = Provider<HubProbe>((ref) => HubClient.probe);
+
 /// App locale (null = follow system, resolved against supported locales).
 class LocaleNotifier extends Notifier<Locale?> {
   @override

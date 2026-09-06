@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'routes.dart';
-
-export 'routes.dart';
-
 import '../features/add_device/brand_catalog_screen.dart';
 import '../features/add_device/pairing_wizard_screen.dart';
 import '../features/add_device/qr_scan_screen.dart';
@@ -31,8 +27,9 @@ import '../features/security/security_screen.dart';
 import '../features/security/sos_screen.dart';
 import '../features/shell/main_shell.dart';
 import 'providers/auth_provider.dart';
+import 'routes.dart';
 
-/// Route names/paths used across the app.
+export 'routes.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 

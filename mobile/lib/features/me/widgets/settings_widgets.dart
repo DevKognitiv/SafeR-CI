@@ -105,10 +105,9 @@ String? validateHubUrl(BuildContext context, String? value) {
 
 String normalizeHubUrl(String value) => value.trim().replaceAll(RegExp(r'/+$'), '');
 
-/// Opens the hub URL editor. "Tester" applies the URL so the shared client probes it;
-/// when the sheet is dismissed without saving, the previous URL is restored.
+/// Opens the hub URL editor. "Tester" probes the typed URL without applying it;
+/// `hubUrlProvider` only changes when the user saves.
 Future<void> showHubUrlEditor(BuildContext context, WidgetRef ref) async {
-  final original = ref.read(hubUrlProvider);
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -116,12 +115,8 @@ Future<void> showHubUrlEditor(BuildContext context, WidgetRef ref) async {
     showDragHandle: true,
     builder: (_) => const HubUrlEditorSheet(),
   );
-  if (!context.mounted) return;
-  if (saved == true) {
-    showSnack(context, context.tr(fr: 'URL du hub enregistrée', en: 'Hub URL saved'));
-    return;
-  }
-  if (ref.read(hubUrlProvider) != original) await ref.read(hubUrlProvider.notifier).set(original);
+  if (!context.mounted || saved != true) return;
+  showSnack(context, context.tr(fr: 'URL du hub enregistrée', en: 'Hub URL saved'));
 }
 
 /// Sheet editing `hubUrlProvider` with a connection test.
@@ -150,9 +145,7 @@ class _HubUrlEditorSheetState extends ConsumerState<HubUrlEditorSheet> {
       _testing = true;
       _reachable = null;
     });
-    await ref.read(hubUrlProvider.notifier).set(normalizeHubUrl(_controller.text));
-    if (!mounted) return;
-    final ok = await ref.read(hubClientProvider).health();
+    final ok = await ref.read(hubProbeProvider)(normalizeHubUrl(_controller.text));
     if (!mounted) return;
     setState(() {
       _testing = false;

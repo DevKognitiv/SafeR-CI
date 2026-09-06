@@ -33,6 +33,7 @@ Future<ProviderContainer> pumpApp(
   final container = ProviderContainer(overrides: [
     storageProvider.overrideWithValue(storage),
     hubClientProvider.overrideWithValue(fake),
+    hubProbeProvider.overrideWithValue((_) async => !fake.failNetwork),
     realtimeEnabledProvider.overrideWithValue(false),
     ...overrides,
   ]);

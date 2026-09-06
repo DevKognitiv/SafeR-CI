@@ -96,7 +96,7 @@ void main() {
       expect(find.text('URL du hub enregistrée'), findsOneWidget);
     });
 
-    testWidgets('hub URL sheet rejects invalid URLs and reverts an unsaved test', (tester) async {
+    testWidgets('hub URL sheet rejects invalid URLs and never applies an unsaved test', (tester) async {
       final container = await pumpApp(tester, const LoginScreen(), authenticated: false, client: FakeHubClient(authenticated: false, failNetwork: true));
       await tester.tap(find.byTooltip("Changer l'URL du hub"));
       await settle(tester);
@@ -111,11 +111,11 @@ void main() {
       await tester.tap(find.text('Tester la connexion'));
       await settle(tester);
       expect(find.text('Hub injoignable'), findsOneWidget);
-      expect(container.read(hubUrlProvider), 'http://10.0.0.5:8000'); // applied for the probe
+      expect(container.read(hubUrlProvider), 'http://localhost:8000'); // probing never applies the URL
 
       await tester.tap(find.text('Annuler'));
       await settle(tester);
-      expect(container.read(hubUrlProvider), 'http://localhost:8000'); // reverted
+      expect(container.read(hubUrlProvider), 'http://localhost:8000'); // still untouched
     });
   });
 

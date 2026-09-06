@@ -46,22 +46,17 @@ class HubFooter extends StatelessWidget {
   }
 }
 
-/// Opens the hub URL sheet. "Tester la connexion" applies the URL so the shared
-/// client can probe it; if the sheet is dismissed without saving, the previous URL is restored.
+/// Opens the hub URL sheet. "Tester la connexion" probes the typed URL without
+/// applying it; `hubUrlProvider` only changes when the user saves.
 Future<void> showHubUrlSheet(BuildContext context, WidgetRef ref) async {
-  final original = ref.read(hubUrlProvider);
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     builder: (_) => const HubUrlSheet(),
   );
-  if (!context.mounted) return;
-  if (saved == true) {
-    showSnack(context, context.tr(fr: 'URL du hub enregistrée', en: 'Hub URL saved'));
-    return;
-  }
-  if (ref.read(hubUrlProvider) != original) await ref.read(hubUrlProvider.notifier).set(original);
+  if (!context.mounted || saved != true) return;
+  showSnack(context, context.tr(fr: 'URL du hub enregistrée', en: 'Hub URL saved'));
 }
 
 /// Bottom sheet editing `hubUrlProvider` with a connection test.
@@ -101,9 +96,7 @@ class _HubUrlSheetState extends ConsumerState<HubUrlSheet> {
       _testing = true;
       _reachable = null;
     });
-    await ref.read(hubUrlProvider.notifier).set(_url);
-    if (!mounted) return;
-    final ok = await ref.read(hubClientProvider).health();
+    final ok = await ref.read(hubProbeProvider)(_url);
     if (!mounted) return;
     setState(() {
       _testing = false;
