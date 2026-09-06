@@ -14,6 +14,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
+    extra_hosts:
+      # lets the API reach the host-networked matter-server (MATTER_SERVER_URL=ws://host.docker.internal:5580/ws)
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +65,20 @@ services:
       - db
       - redis
 
+  # Matter controller used by the SafeR Hub "matter" adapter (commissioning + control).
+  # Needs host networking for mDNS/BLE discovery of Matter devices on the LAN.
+  matter-server:
+    image: ghcr.io/home-assistant-libs/python-matter-server:stable
+    container_name: safer_matter
+    restart: unless-stopped
+    network_mode: host
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - matter_data:/data
+      - /run/dbus:/run/dbus:ro
+    command: --storage-path /data --paa-root-cert-dir /data/credentials
+
   nginx:
     image: nginx:alpine
     container_name: safer_nginx
@@ -78,3 +95,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  matter_data:

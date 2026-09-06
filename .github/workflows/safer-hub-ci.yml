@@ -1,0 +1,64 @@
+name: SafeR Hub & Mobile CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "mobile/**"
+      - ".github/workflows/safer-hub-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "mobile/**"
+      - ".github/workflows/safer-hub-ci.yml"
+
+jobs:
+  hub-backend:
+    name: Hub backend (pytest + pylint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-asyncio aiosqlite pylint
+      - name: Import check
+        run: python -c "import app.hub.app"
+        env:
+          SECRET_KEY: ci-secret
+      - name: Run hub tests
+        run: pytest app/hub/tests -q
+        env:
+          SECRET_KEY: ci-secret
+      - name: Pylint (hub package)
+        run: pylint --rcfile=.pylintrc app/hub --fail-under=9.0
+
+  mobile:
+    name: SafeR app (analyze + test + web build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.2"
+          cache: true
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+      - name: Test
+        run: flutter test
+      - name: Build web
+        run: flutter build web --release --dart-define=SAFER_HUB_URL=https://api.safer-ci.app

@@ -17,17 +17,30 @@ SafeR CI is a community safety platform built for the realities of Côte d'Ivoir
 
 ---
 
+## 📱 SafeR app — smart home & security (new)
+
+The mobile app is now a **Tuya-Smart-style smart home & security app named SafeR**: one app to
+onboard and control devices from **Tuya, Hikvision, Dahua, Ajax, Matter, ONVIF cameras and Home
+Assistant**, with rooms, tap-to-run scenes, automations, a Security tab (arm modes, alarm banner,
+zones) and the SafeR CI SOS button. It is backed by the **SafeR Hub** (`backend/app/hub`), a
+multi-brand hub API with a unified device model, realtime WebSocket updates, a software alarm
+panel, a SIA DC-09 receiver and a Matter controller bridge.
+
+➡️ [docs/safer-app.md](docs/safer-app.md) · [docs/device-onboarding.md](docs/device-onboarding.md)
+
+---
+
 ## 🏗️ Architecture (4 Layers)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 4 — Mobile App (Flutter, French-first)                   │
-│  SOS Button · Incident Map · Push Alerts · Responder Mode       │
+│  Layer 4 — SafeR App (Flutter, French-first, Tuya-style)        │
+│  Devices · Scenes · Security · SOS · Multi-brand onboarding     │
 └────────────────────────┬────────────────────────────────────────┘
                          │ HTTPS / WebSocket
 ┌────────────────────────▼────────────────────────────────────────┐
-│  Layer 3 — SafeR API Server (FastAPI + PostgreSQL + Redis)      │
-│  User Auth · Incident Mgmt · Geo Alerts · Analytics Dashboard   │
+│  Layer 3 — SafeR API + SafeR Hub (FastAPI + PostgreSQL + Redis) │
+│  Incidents · Geo Alerts · Hub: Tuya/Hik/Dahua/Ajax/Matter/HA    │
 └────────────────────────┬────────────────────────────────────────┘
                          │ REST / MQTT / Webhooks
 ┌────────────────────────▼────────────────────────────────────────┐
@@ -52,20 +65,24 @@ SafeR-CI/
 │   ├── custom_components/       # Custom HA integrations
 │   ├── dashboards/              # Lovelace UI dashboards
 │   └── configuration.yaml
-├── backend/                     # FastAPI server (Python 3.12)
+├── backend/                     # FastAPI server (Python 3.11+)
 │   ├── app/
-│   │   ├── api/routes/          # REST endpoints
+│   │   ├── api/routes/          # Incident REST endpoints
+│   │   ├── hub/                 # SafeR Hub: multi-brand smart home & security API
+│   │   │   ├── adapters/        # tuya, hikvision, dahua, ajax, matter, onvif, home_assistant, demo
+│   │   │   ├── routes/          # auth, homes, devices, onboarding, scenes, security, messages, ws
+│   │   │   ├── services/        # device service, poller, subscriptions, SIA DC-09 receiver, SOS
+│   │   │   ├── automation/      # scene runner + automation engine
+│   │   │   └── tests/           # pytest suite (no network)
 │   │   ├── models/              # SQLAlchemy + PostGIS models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── services/            # Business logic
 │   │   └── main.py
 │   ├── requirements.txt
-│   └── docker-compose.yml
-├── mobile/                      # Flutter app (iOS + Android)
+│   └── docker-compose.yml       # api, db, redis, celery, matter-server, nginx
+├── mobile/                      # SafeR Flutter app (Android, iOS, web)
 │   ├── lib/
-│   │   ├── screens/             # SOS, Map, Alerts, Profile
-│   │   ├── widgets/             # Reusable UI components
-│   │   └── services/            # API, location, notifications
+│   │   ├── core/                # api client, websocket, models, providers, router, theme, i18n
+│   │   └── features/            # auth, home, add_device, device panels, scenes, security, me
+│   ├── test/                    # widget + unit tests
 │   └── pubspec.yaml
 ├── infrastructure/              # Docker, Nginx, Terraform
 └── docs/                        # Architecture, API, deployment guides
@@ -84,7 +101,8 @@ SafeR-CI/
 | Backend | **FastAPI + Python 3.12** | Central API server |
 | Database | PostgreSQL + PostGIS | Geo-aware incident storage |
 | Cache | Redis + Celery | Real-time alerts, async tasks |
-| Mobile | **Flutter 3.x** | iOS + Android, French-first |
+| Mobile | **Flutter 3.x** + Riverpod + go_router | SafeR app: iOS + Android + web, French-first |
+| Smart home | **SafeR Hub** (FastAPI) | Tuya Cloud/local, Hikvision ISAPI, Dahua CGI, Ajax API + SIA DC-09, Matter (python-matter-server), ONVIF, Home Assistant |
 | Maps | OpenStreetMap + flutter_map | Zero-cost mapping |
 | Push | Firebase Cloud Messaging | Mobile push alerts |
 | Messaging | WhatsApp Business API | High-penetration CI fallback |
@@ -126,8 +144,13 @@ cd SafeR-CI
 # Start backend
 cd backend && cp .env.example .env && docker-compose up -d
 
-# Run Flutter app
-cd ../mobile && flutter pub get && flutter run
+# Run the SafeR Hub alone (SQLite, no Docker)
+cd backend && pip install -r requirements.txt aiosqlite
+export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"   # required (no placeholder)
+uvicorn app.hub.app:app --port 8000
+
+# Run the SafeR app
+cd ../mobile && flutter pub get && flutter run --dart-define=SAFER_HUB_URL=http://10.0.2.2:8000
 ```
 
 See [docs/deployment.md](docs/deployment.md) for the full guide.

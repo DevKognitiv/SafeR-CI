@@ -1,0 +1,55 @@
+# Pylint configuration for the SafeR Hub package (backend/app/hub).
+# Run:  pylint --rcfile=backend/.pylintrc backend/app/hub        (CI gate: --fail-under=9.0)
+[MASTER]
+jobs=0
+py-version=3.10
+extension-pkg-allow-list=pydantic
+ignore=__pycache__
+
+[MESSAGES CONTROL]
+disable=
+    # Style/complexity checks that do not fit an adapter-heavy protocol codebase
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-locals,
+    too-many-instance-attributes,
+    too-many-branches,
+    too-many-statements,
+    too-many-return-statements,
+    too-many-public-methods,
+    too-many-lines,
+    too-many-nested-blocks,
+    too-many-boolean-expressions,
+    duplicate-code,
+    fixme,
+    # Late imports are used on purpose to avoid import cycles (runtime <-> services <-> routes)
+    import-outside-toplevel,
+    # Broad handlers are always logged; adapters/background services must never crash the hub
+    broad-exception-caught,
+    # `except CancelledError: raise` before a logged broad handler is deliberate
+    try-except-raise,
+    # pytest fixtures are re-bound as test parameters by design
+    redefined-outer-name,
+    # Tests reach into adapters/services on purpose; FastAPI deps/adapter hooks have unused params
+    protected-access,
+    unused-argument
+
+[BASIC]
+good-names=i,j,k,e,x,y,n,db,id,ok,ws,tc,fd,dp,hs,_
+# Test functions/classes, fixtures and private helpers do not need docstrings
+no-docstring-rgx=^(_|test_|Test|conftest)
+
+[FORMAT]
+max-line-length=160
+indent-string='    '
+
+[DESIGN]
+max-parents=10
+
+[REPORTS]
+score=yes
+
+[TYPECHECK]
+ignored-modules=tinytuya
+generated-members=
