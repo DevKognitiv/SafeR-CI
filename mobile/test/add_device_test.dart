@@ -26,6 +26,9 @@ import 'helpers/pump_app.dart';
 
 const _matterQr = 'MT:Y.K9042C00KA0648G00';
 
+/// Card of a brand in the catalogue.
+Finder brandCard(String id) => find.byWidgetPredicate((w) => w is BrandCard && w.brand.id == id);
+
 /// Fill the Hikvision "IP + credentials" form.
 Future<void> _fillHikvision(WidgetTester tester, {String host = '192.168.1.64'}) async {
   await tester.enterText(find.byKey(pairingFieldKey('host')), host);
@@ -65,8 +68,8 @@ void main() {
       expect(find.text('Marques'), findsOneWidget);
       expect(find.byType(BrandCard), findsNWidgets(FakeHubClient.demoBrands.length));
       for (final brand in FakeHubClient.demoBrands) {
-        expect(find.text(brand.name), findsOneWidget);
-        expect(find.text(brand.vendor), findsWidgets);
+        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.name)), findsOneWidget);
+        expect(find.descendant(of: brandCard(brand.id), matching: find.text(brand.vendor)), findsOneWidget);
       }
       // Protocol chips.
       expect(find.text('tuya_cloud'), findsOneWidget);
@@ -78,7 +81,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'hik');
       await settle(tester);
       expect(find.byType(BrandCard), findsOneWidget);
-      expect(find.text('Hikvision'), findsOneWidget);
+      expect(brandCard('hikvision'), findsOneWidget);
       expect(find.text('Tuya / Smart Life'), findsNothing);
       // Group chips are hidden while searching; matching categories from every group are shown.
       expect(find.byType(CategoryGroupChips), findsNothing);
@@ -115,8 +118,8 @@ void main() {
       // Brands filtered to the ones supporting cameras + filter chip in the header.
       expect(find.byType(InputChip), findsOneWidget);
       expect(find.byType(BrandCard), findsNWidgets(3));
-      expect(find.text('Hikvision'), findsOneWidget);
-      expect(find.text('Matter'), findsNothing);
+      expect(brandCard('hikvision'), findsOneWidget);
+      expect(brandCard('matter'), findsNothing);
 
       await tester.tap(find.byTooltip('Retirer le filtre'));
       await settle(tester);
@@ -125,7 +128,7 @@ void main() {
 
     testWidgets('tapping a brand opens the pairing wizard, the scan card opens the scanner', (tester) async {
       final app = await pumpAddDevice(tester, size: const Size(400, 1500), scannerBuilder: fakeScanner(_matterQr));
-      await tester.tap(find.widgetWithText(BrandCard, 'Hikvision'));
+      await tester.tap(brandCard('hikvision'));
       await settle(tester);
       expect(app.router.state.uri.path, Routes.pair('hikvision'));
       expect(find.text('Adresse IP + identifiants'), findsOneWidget);

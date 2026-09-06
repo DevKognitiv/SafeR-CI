@@ -86,8 +86,8 @@ class _BrandCatalogScreenState extends ConsumerState<BrandCatalogScreen> {
   Widget build(BuildContext context) {
     final brandsAsync = ref.watch(brandsProvider);
     final categoriesAsync = ref.watch(categoriesProvider);
-    final groups = categoriesAsync.value ?? const <CategoryGroup>[];
-    final brandNames = {for (final b in brandsAsync.value ?? const <BrandInfo>[]) b.id: b.name};
+    final groups = categoriesAsync.valueOrNull ?? const <CategoryGroup>[];
+    final brandNames = {for (final b in brandsAsync.valueOrNull ?? const <BrandInfo>[]) b.id: b.name};
     final selectedCategory = _category(groups, _categoryId);
 
     return Scaffold(

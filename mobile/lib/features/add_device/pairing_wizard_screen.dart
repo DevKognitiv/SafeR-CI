@@ -272,7 +272,7 @@ class _PairingWizardScreenState extends ConsumerState<PairingWizardScreen> {
     final brandAsync = ref.watch(pairingBrandProvider(widget.brandId));
     final homes = ref.watch(homesProvider);
     final home = ref.watch(currentHomeProvider);
-    final title = brandAsync.value?.name ?? context.tr(fr: 'Ajouter un appareil', en: 'Add device');
+    final title = brandAsync.valueOrNull?.name ?? context.tr(fr: 'Ajouter un appareil', en: 'Add device');
 
     if (home == null) {
       final loading = homes.isLoading && !homes.hasValue;

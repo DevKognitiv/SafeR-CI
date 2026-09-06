@@ -22,23 +22,35 @@ class CategoryGroupChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
         height: 48,
-        child: ListView.separated(
+        child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: groups.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, index) {
-            final group = groups[index];
-            final selected = group.id == selectedId;
-            return ChoiceChip(
-              avatar: Icon(iconFromName(group.icon, fallback: Icons.category), size: 18, color: selected ? SafeRColors.primary : null),
-              label: Text(categoryGroupName(context, group)),
-              selected: selected,
-              showCheckmark: false,
-              onSelected: (_) => onSelected(group.id),
-            );
-          },
+          child: Row(
+            children: [
+              for (var i = 0; i < groups.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                _GroupChip(group: groups[i], selected: groups[i].id == selectedId, onSelected: () => onSelected(groups[i].id)),
+              ],
+            ],
+          ),
         ),
+      );
+}
+
+class _GroupChip extends StatelessWidget {
+  const _GroupChip({required this.group, required this.selected, required this.onSelected});
+
+  final CategoryGroup group;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+        avatar: Icon(iconFromName(group.icon, fallback: Icons.category), size: 18, color: selected ? SafeRColors.primary : null),
+        label: Text(categoryGroupName(context, group)),
+        selected: selected,
+        showCheckmark: false,
+        onSelected: (_) => onSelected(),
       );
 }
 
