@@ -8,7 +8,7 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/widgets.dart';
 import 'auth_validators.dart';
 
-/// Subtle "Hub : <url>" footer with a gear to change the hub URL.
+/// Subtle `Hub : <url>` footer with a gear to change the hub URL.
 class HubFooter extends StatelessWidget {
   const HubFooter({super.key, required this.url, required this.onEdit});
 

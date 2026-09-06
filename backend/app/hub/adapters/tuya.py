@@ -144,6 +144,11 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
+def _round_half_up(value: float) -> int:
+    """Deterministic rounding for device values (Python's round() is half-to-even)."""
+    return int(value + 0.5) if value >= 0 else -int(-value + 0.5)
+
+
 def _scale_of(meta: Dict[str, Any], default: int) -> int:
     scale = _num(meta.get("scale"))
     return int(scale) if scale is not None else default
@@ -201,7 +206,7 @@ def _decode_brightness(value: Any, meta: Dict[str, Any], code: str) -> Any:
 def _encode_brightness(value: Any, meta: Dict[str, Any], code: str) -> int:
     low, high = _bright_range(meta, code)
     pct = _clamp(_num(value, 0.0) or 0.0, 0, 100)
-    return int(round(low + pct / 100 * (high - low)))
+    return _round_half_up(low + pct / 100 * (high - low))
 
 
 def _decode_color_temp(value: Any, meta: Dict[str, Any], _code: str) -> Any:
@@ -217,7 +222,7 @@ def _encode_color_temp(value: Any, meta: Dict[str, Any], _code: str) -> int:
     low, high = _range_of(meta, (0, 1000))
     kelvin = _clamp(_num(value, COLOR_TEMP_RANGE[0]) or COLOR_TEMP_RANGE[0], *COLOR_TEMP_RANGE)
     ratio = (kelvin - COLOR_TEMP_RANGE[0]) / (COLOR_TEMP_RANGE[1] - COLOR_TEMP_RANGE[0])
-    return int(round(low + ratio * (high - low)))
+    return _round_half_up(low + ratio * (high - low))
 
 
 def _colour_scale(meta: Dict[str, Any], code: str, sample: Optional[float] = None) -> float:
@@ -259,9 +264,9 @@ def _encode_colour(value: Any, meta: Dict[str, Any], code: str) -> str:
         raise AdapterError("color expects {h, s, v}", "invalid_input")
     scale = _colour_scale(meta, code)
     return json.dumps({
-        "h": int(round(float(_num(value.get("h"), 0.0) or 0.0) % 360)),
-        "s": int(round(_clamp(_num(value.get("s"), 0.0) or 0.0, 0, 100) / 100 * scale)),
-        "v": int(round(_clamp(_num(value.get("v"), 0.0) or 0.0, 0, 100) / 100 * scale)),
+        "h": _round_half_up(float(_num(value.get("h"), 0.0) or 0.0) % 360),
+        "s": _round_half_up(_clamp(_num(value.get("s"), 0.0) or 0.0, 0, 100) / 100 * scale),
+        "v": _round_half_up(_clamp(_num(value.get("v"), 0.0) or 0.0, 0, 100) / 100 * scale),
     }, separators=(",", ":"))
 
 
@@ -685,6 +690,12 @@ def local_dps_map(category: str, dps: Optional[Dict[str, Any]] = None, override:
         if gangs == ["1"]:
             table["1"] = "switch"
     return table
+
+
+def _invert_position(state: Dict[str, Any], invert: bool) -> None:
+    """Covers that report 0 = open: flip ``position`` so that 100 always means open (``config.invert_position``)."""
+    if invert and isinstance(state.get("position"), (int, float)) and not isinstance(state["position"], bool):
+        state["position"] = 100 - int(state["position"])
 
 
 def local_functions(dps_map: Dict[str, str], dps: Optional[Dict[str, Any]], category: str) -> List[Dict[str, Any]]:
@@ -1160,6 +1171,9 @@ class TuyaAdapter(BrandAdapter):
         dps_map = local_dps_map(category, dps, payload.get("dps_map"))
         status = dps_to_status(dps, dps_map)
         functions = local_functions(dps_map, dps, category)
+        invert = bool(payload.get("invert_position", False))
+        state = map_status(status, category)
+        _invert_position(state, invert)
         draft = DeviceDraft(
             external_id=device_id,
             name=str(payload.get("name") or "").strip() or f"Tuya {CATEGORY_INFO.get(category, {}).get('name', category)}",
@@ -1167,9 +1181,8 @@ class TuyaAdapter(BrandAdapter):
             protocol=PROTOCOL_LOCAL,
             manufacturer="Tuya",
             capabilities=build_capabilities(functions, status, category),
-            state=map_status(status, category),
-            config={"host": host, "version": version, "device_id": device_id, "dps_map": dps_map,
-                    "invert_position": bool(payload.get("invert_position", False))},
+            state=state,
+            config={"host": host, "version": version, "device_id": device_id, "dps_map": dps_map, "invert_position": invert},
             credentials={"local_key": local_key},
             icon=CATEGORY_INFO.get(category, {}).get("icon"),
         )
@@ -1217,8 +1230,7 @@ class TuyaAdapter(BrandAdapter):
 
     @staticmethod
     def _apply_inversion(device: DeviceRef, state: Dict[str, Any]) -> None:
-        if device.cfg("invert_position") and isinstance(state.get("position"), (int, float)):
-            state["position"] = 100 - int(state["position"])
+        _invert_position(state, bool(device.cfg("invert_position")))
 
     # ---------------------------------------------------------------- commands
     async def send_command(self, device: DeviceRef, code: str, value: Any, ctx: AdapterContext) -> Dict[str, Any]:
