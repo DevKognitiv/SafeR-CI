@@ -59,6 +59,13 @@ void main() {
       final off = device.withState({'switch': false});
       expect(off.isOn, isFalse);
       expect(off.state['brightness'], 42);
+      expect(off.lastSeenAt, isNotNull);
+      // An offline report is not a sighting: "last seen" keeps the previous value
+      final seen = off.lastSeenAt;
+      final offline = off.withState({}, online: false);
+      expect(offline.online, isFalse);
+      expect(offline.lastSeenAt, seen);
+      expect(offline.withState({'switch': true}, online: true).lastSeenAt!.isAfter(seen!) || offline.withState({}, online: true).lastSeenAt != seen, isTrue);
     });
 
     test('HubEvent parses device.state frames', () {

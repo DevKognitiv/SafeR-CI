@@ -628,8 +628,9 @@ async def test_sos_answers_before_the_incident_platform_does():
             elapsed = asyncio.get_running_loop().time() - started
             assert response.status_code == 201 and response.json()["forwarded"] is False
             assert elapsed < 0.5, f"SOS response waited for the platform ({elapsed:.2f}s)"
-            assert runtime.tasks and len(calls) == 1
+            assert runtime.tasks  # the forward is still running in the background
             await runtime.wait_tasks()
+            assert len(calls) == 1
             stored = (await http.get(f"{PREFIX}/homes/{home['id']}/sos", headers=headers)).json()[0]
             assert stored["forwarded"] is True and stored["incident_id"] == "inc-slow"
     finally:
