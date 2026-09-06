@@ -6,7 +6,7 @@ import '../../core/config.dart';
 import '../../core/i18n.dart';
 import '../../core/models/home.dart';
 import '../../core/providers/providers.dart';
-import '../../core/router.dart';
+import '../../core/routes.dart';
 import '../../core/widgets/widgets.dart';
 import 'widgets/alarm_banner.dart';
 import 'widgets/device_grid.dart';

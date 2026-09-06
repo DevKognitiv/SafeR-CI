@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:safer_ci/core/api/api_exception.dart';
 import 'package:safer_ci/core/models/models.dart';
 import 'package:safer_ci/core/providers/providers.dart';
-import 'package:safer_ci/core/router.dart';
+import 'package:safer_ci/core/routes.dart';
 import 'package:safer_ci/core/widgets/widgets.dart';
 import 'package:safer_ci/features/add_device/brand_catalog_screen.dart';
 import 'package:safer_ci/features/add_device/pairing_wizard_screen.dart';

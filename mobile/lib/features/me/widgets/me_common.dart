@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/i18n.dart';
-import '../../../core/router.dart';
+import '../../../core/routes.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/widgets.dart';
 

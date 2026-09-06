@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:safer_ci/core/router.dart';
+import 'package:safer_ci/core/routes.dart';
 import 'package:safer_ci/core/widgets/widgets.dart';
 import 'package:safer_ci/features/scenes/automation_editor_screen.dart';
 import 'package:safer_ci/features/scenes/scene_editor_screen.dart';
@@ -195,21 +195,25 @@ void main() {
       List<String> titles() => tester.widgetList<ActionTile>(find.byType(ActionTile)).map((t) => t.action.type).toList();
       expect(titles(), ['device_command', 'security_mode']);
 
-      // The actions list is below the fold on a 400x800 viewport: scroll until the
-      // button under the list is built, so both rows are fully visible.
+      // The actions list is below the fold on a 400x800 viewport: align the first
+      // row with the top of the viewport so both rows are visible.
+      final handle = find.byIcon(Icons.drag_indicator).first;
       await tester.scrollUntilVisible(
-        find.text('Ajouter une action'),
+        handle,
         150,
         scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
       );
       await settle(tester);
       // Drag the first row's handle below the second row.
-      final handle = find.byIcon(Icons.drag_indicator).first;
+      final rowHeight = tester.getSize(find.byType(ActionTile).first).height;
       final gesture = await tester.startGesture(tester.getCenter(handle));
       await tester.pump(const Duration(milliseconds: 100));
-      await gesture.moveBy(const Offset(0, 60));
+      await gesture.moveBy(Offset(0, rowHeight * 0.6));
       await tester.pump(const Duration(milliseconds: 100));
-      await gesture.moveBy(const Offset(0, 60));
+      expect(find.byType(ActionTile), findsNWidgets(3), reason: 'the drag proxy should be shown while dragging');
+      await gesture.moveBy(Offset(0, rowHeight * 0.6));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveBy(Offset(0, rowHeight * 0.3));
       await tester.pump(const Duration(milliseconds: 100));
       await gesture.up();
       await settle(tester, frames: 20);

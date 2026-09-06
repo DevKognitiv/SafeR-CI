@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/i18n.dart';
 import '../../core/providers/providers.dart';
-import '../../core/router.dart';
+import '../../core/routes.dart';
 import 'widgets/auth_form_widgets.dart';
 import 'widgets/auth_hero.dart';
 import 'widgets/auth_validators.dart';

@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n.dart';
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
-import '../../core/router.dart';
+import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/widgets.dart';
 import 'widgets/automation_card.dart';

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:safer_ci/core/providers/providers.dart';
-import 'package:safer_ci/core/router.dart';
+import 'package:safer_ci/core/routes.dart';
 import 'package:safer_ci/features/add_device/brand_catalog_screen.dart';
 import 'package:safer_ci/features/add_device/pairing_wizard_screen.dart';
 import 'package:safer_ci/features/add_device/qr_scan_screen.dart';

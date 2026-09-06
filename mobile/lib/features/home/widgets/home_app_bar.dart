@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/i18n.dart';
 import '../../../core/models/home.dart';
 import '../../../core/providers/providers.dart';
-import '../../../core/router.dart';
+import '../../../core/routes.dart';
 import 'home_switcher_sheet.dart';
 
 /// Home tab app bar: home switcher · "+" menu · message-center bell.

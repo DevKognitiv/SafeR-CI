@@ -9,7 +9,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/i18n.dart';
 import '../../core/models/brand.dart';
 import '../../core/providers/providers.dart';
-import '../../core/router.dart';
+import '../../core/routes.dart';
 import '../../core/widgets/widgets.dart';
 import 'matter_payload.dart';
 import 'widgets/scan_overlay.dart';

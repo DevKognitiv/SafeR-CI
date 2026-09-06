@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n.dart';
 import '../../core/models/device.dart';
 import '../../core/providers/providers.dart';
-import '../../core/router.dart';
+import '../../core/routes.dart';
 import '../../core/widgets/widgets.dart';
 import 'panels/device_panel.dart';
 import 'widgets/device_offline_banner.dart';
