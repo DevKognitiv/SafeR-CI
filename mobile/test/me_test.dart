@@ -127,7 +127,9 @@ void main() {
       expect(user.phone, '+225 0700000000');
       expect(user.locale, 'en');
       expect(find.text('Profil mis à jour'), findsOneWidget);
-      // Saved -> back on the Me tab with the new name.
+      // Saved -> back on the Me tab with the new name once the pop transition ends.
+      await settle(tester, frames: 30);
+      expect(find.byType(ProfileScreen), findsNothing);
       expect(find.byType(MeScreen), findsOneWidget);
       expect(find.text('Alice K.'), findsOneWidget);
     });
