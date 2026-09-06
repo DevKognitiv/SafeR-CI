@@ -1170,14 +1170,15 @@ class _ServerSubscription:
             except AdapterError as exc:
                 logger.debug("Cannot map state for %s: %s", device.external_id, exc.message)
                 continue
+            current: Dict[str, Any] = dict(result.state)
             previous = self.last.get(device.external_id)
             if previous is None:
-                changed = dict(result.state)
+                changed = dict(current)
             else:
-                changed = {k: v for k, v in result.state.items() if k not in previous[1] or previous[1][k] != v}
+                changed = {k: v for k, v in current.items() if k not in previous[1] or previous[1][k] != v}
             if previous is not None and not changed and previous[0] == result.online:
                 continue
-            self.last[device.external_id] = (result.online, dict(result.state))
+            self.last[device.external_id] = (result.online, current)
             await self.ctx.emit("state", device.external_id, {"state": changed, "online": result.online})
 
 
@@ -1346,11 +1347,9 @@ class MatterAdapter(BrandAdapter):
 
         drafts = build_drafts(node, server_url)
         if parsed_code is not None:
+            ids = {key: parsed_code[key] for key in ("vendor_id", "product_id") if parsed_code.get(key) is not None}
             for draft in drafts:
-                if parsed_code.get("vendor_id") is not None:
-                    draft.config.setdefault("vendor_id", parsed_code["vendor_id"])
-                if parsed_code.get("product_id") is not None:
-                    draft.config.setdefault("product_id", parsed_code["product_id"])
+                draft.config = {**ids, **dict(draft.config)}
                 draft.manufacturer = draft.manufacturer or parsed_code.get("vendor_name")
         return PairResult(devices=drafts, integration=integration, message="Appareil Matter ajouté")
 
