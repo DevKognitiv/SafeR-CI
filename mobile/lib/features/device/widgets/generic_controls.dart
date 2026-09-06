@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -172,7 +174,16 @@ class _TextCommandRowState extends ConsumerState<_TextCommandRow> {
   Future<void> _send() async {
     final value = _controller.text.trim();
     if (value.isEmpty) return;
-    final ok = await sendDeviceCommand(context, ref, widget.device, widget.cap.code, widget.cap.type == 'json' ? value : value);
+    dynamic payload = value;
+    if (widget.cap.type == 'json') {
+      try {
+        payload = jsonDecode(value);
+      } on FormatException {
+        showErrorSnack(context, context.tr(fr: 'JSON invalide', en: 'Invalid JSON'));
+        return;
+      }
+    }
+    final ok = await sendDeviceCommand(context, ref, widget.device, widget.cap.code, payload);
     if (ok && mounted) showSnack(context, context.tr(fr: 'Commande envoyée', en: 'Command sent'));
   }
 
