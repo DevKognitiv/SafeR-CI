@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
@@ -35,9 +34,7 @@ from app.hub.adapters.base import (
     AdapterContext, AdapterError, BrandAdapter, BrandInfo, DeviceDraft, DeviceRef, DeviceState, FormField,
     IntegrationDraft, PairResult, PairingMethod, Unsubscribe, require,
 )
-from app.hub.adapters.matter_payload import (
-    DISCOVERY_BLE, PayloadError, is_valid_passcode, parse_onboarding_code, vendor_name,
-)
+from app.hub.adapters.matter_payload import is_valid_passcode, parse_onboarding_code, vendor_name
 from app.hub.adapters.registry import registry
 from app.hub.capabilities import cap, cover_caps, lock_caps, sensor_caps, thermostat_caps
 
@@ -748,8 +745,7 @@ def endpoint_state(endpoint: EndpointInfo, node: ParsedNode) -> Dict[str, Any]:
         if CL_LEVEL in endpoint.attrs:
             put("brightness", level_to_percent(get(CL_LEVEL, ATTR_CURRENT_LEVEL)))
     if category == "light":
-        dimmable, color_temp, color = _light_features(endpoint)
-        del dimmable
+        _, color_temp, color = _light_features(endpoint)
         if color_temp:
             put("color_temp", mireds_to_kelvin(get(CL_COLOR, ATTR_COLOR_TEMPERATURE_MIREDS)))
         if color:
@@ -1109,9 +1105,6 @@ class _ServerSubscription:
                     logger.warning("Matter server connection %s lost; reconnecting", self.url)
             except AdapterError as exc:
                 logger.warning("Matter subscription %s failed: %s", self.url, exc.message)
-            except asyncio.CancelledError:
-                await client.close()
-                raise
             except Exception:  # pylint: disable=broad-except
                 logger.exception("Matter subscription %s crashed", self.url)
             finally:
@@ -1336,10 +1329,10 @@ class MatterAdapter(BrandAdapter):
             if wifi_ssid:
                 await client.send_command("set_wifi_credentials", ssid=wifi_ssid, credentials=wifi_password)
             if code is not None:
-                bluetooth = bool(server_info.get("bluetooth_enabled", True))
-                needs_ble = bool(parsed_code and parsed_code["discovery_capabilities"].get("ble")) if parsed_code else True
-                network_only = bool(payload.get("network_only")) or not bluetooth or not needs_ble and parsed_code is not None \
-                    and parsed_code["kind"] == "matter_qr"
+                # Skip the BLE phase when the server has no Bluetooth or the QR says the device is on-network only.
+                network_only = bool(payload.get("network_only")) or not server_info.get("bluetooth_enabled", True)
+                if parsed_code is not None and parsed_code["kind"] == "matter_qr" and not parsed_code["discovery_capabilities"]["ble"]:
+                    network_only = True
                 logger.info("Commissioning Matter device with code (network_only=%s)", network_only)
                 result = await client.send_command("commission_with_code", timeout=self.commission_timeout, code=code, network_only=network_only)
             else:
@@ -1428,11 +1421,5 @@ def parse_code(code: str) -> Optional[Dict[str, Any]]:
         "data": parsed,
     }
 
-
-__all__ = [
-    "BRAND_ID", "PROTOCOL", "MatterAdapter", "MatterClient", "Operation", "ParsedNode", "EndpointInfo",
-    "build_drafts", "build_operations", "device_state", "endpoint_capabilities", "endpoint_state", "map_server_error",
-    "parse_code", "parse_node", "unreachable_error", "PayloadError", "DISCOVERY_BLE", "math",
-]
 
 registry.register(MatterAdapter())
