@@ -187,10 +187,13 @@ void main() {
       await tester.tap(find.text('Bureau'));
       await settle(tester);
       expect(app.container.read(currentHomeIdProvider), 'home-new');
+      expect(find.text('« Bureau » est maintenant la maison actuelle'), findsOneWidget);
+      await clearSnacks(tester);
       await tester.tap(find.text('Maison Cocody'));
       await settle(tester);
       expect(app.container.read(currentHomeIdProvider), homeId);
       expect(find.text('« Maison Cocody » est maintenant la maison actuelle'), findsOneWidget);
+      await clearSnacks(tester);
 
       // Edit the name.
       await tester.tap(find.byTooltip('Options de la maison').first);
@@ -205,6 +208,7 @@ void main() {
       expect(app.client.homeUpdates.single.name, 'Maison Riviera');
       expect(find.text('Maison Riviera'), findsOneWidget);
       expect(find.text('Maison mise à jour'), findsOneWidget);
+      await clearSnacks(tester);
 
       // Delete it (owner only) after confirmation.
       await tester.tap(find.byTooltip('Options de la maison').first);
@@ -249,6 +253,7 @@ void main() {
       await settle(tester);
       expect(find.text("Cet utilisateur doit d'abord créer un compte SafeR"), findsOneWidget);
       expect(find.byType(MemberTile), findsNWidgets(2));
+      await clearSnacks(tester);
 
       // Existing account -> added as admin.
       await tester.tap(find.byKey(const Key('members-add')));
@@ -287,6 +292,7 @@ void main() {
       await settle(tester);
       expect(app.client.roleUpdates, [(userId: 'user-2', role: 'admin')]);
       expect(find.text('Rôle mis à jour'), findsOneWidget);
+      await clearSnacks(tester);
 
       await tester.tap(find.byTooltip('Options du membre'));
       await settle(tester);
