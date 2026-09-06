@@ -601,3 +601,37 @@ async def test_messages_are_published_after_commit(client, auth, home, devices, 
         rows = (await session.execute(select(Message).where(Message.home_id == home["id"], Message.title.like("Sabotage%")))).scalars().all()
     assert rows == []
     assert (await device_state(client, auth, pir["id"]))["motion"] is True
+
+
+async def test_sos_answers_before_the_incident_platform_does():
+    """Forwarding is fire-and-forget: a slow platform must not hold the panic button response."""
+    calls: List[httpx.Request] = []
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        await asyncio.sleep(0.6)
+        return httpx.Response(201, json={"id": "inc-slow"})
+
+    app = create_app(
+        settings=make_settings(SAFER_INCIDENTS_URL=INCIDENTS_URL), database_url="sqlite+aiosqlite://",
+        transport=httpx.MockTransport(slow), start_services=False,
+    )
+    runtime = app.state.hub_runtime
+    await runtime.start()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://hub") as http:
+            user = await register_user(http)
+            headers = {"Authorization": f"Bearer {user['token']}"}
+            home = (await http.post(f"{PREFIX}/homes", json={"name": "Maison"}, headers=headers)).json()
+            started = asyncio.get_running_loop().time()
+            response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={"note": "vite"}, headers=headers)
+            elapsed = asyncio.get_running_loop().time() - started
+            assert response.status_code == 201 and response.json()["forwarded"] is False
+            assert elapsed < 0.5, f"SOS response waited for the platform ({elapsed:.2f}s)"
+            assert runtime.tasks and len(calls) == 1
+            await runtime.wait_tasks()
+            stored = (await http.get(f"{PREFIX}/homes/{home['id']}/sos", headers=headers)).json()[0]
+            assert stored["forwarded"] is True and stored["incident_id"] == "inc-slow"
+    finally:
+        await runtime.stop()
+        set_runtime(None)

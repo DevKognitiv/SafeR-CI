@@ -81,8 +81,10 @@ class SecurityNotifier extends FamilyAsyncNotifier<SecurityState, String> {
       if (event == null) return;
       final current = state.valueOrNull;
       if (event.type == HubEvent.securityMode && event.mode != null) {
-        if (current != null) state = AsyncData(current.copyWith(mode: event.mode, alarmActive: event.mode == 'disarmed' ? false : null));
-        ref.read(homesProvider.notifier).patch(arg, (h) => h.copyWith(securityMode: event.mode));
+        final disarmed = event.mode == 'disarmed';
+        if (current != null) state = AsyncData(current.copyWith(mode: event.mode, alarmActive: disarmed ? false : null));
+        // A keypad disarm clears the alarm on the hub too: keep the Home tab banner in sync as well.
+        ref.read(homesProvider.notifier).patch(arg, (h) => h.copyWith(securityMode: event.mode, alarmActive: disarmed ? false : null));
       } else if (event.type == HubEvent.securityAlarm) {
         final active = event.active ?? true;
         if (current != null) state = AsyncData(current.copyWith(alarmActive: active, alarmDeviceId: event.deviceId));

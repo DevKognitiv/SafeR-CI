@@ -182,8 +182,14 @@ class Device {
       );
 
   /// Merge a partial state update (from a command or a WebSocket event).
-  Device withState(Map<String, dynamic> partial, {bool? online}) =>
-      copyWith(state: {...state, ...partial}, online: online, lastSeenAt: DateTime.now());
+  ///
+  /// An `online: false` report is not a contact with the device: `lastSeenAt` keeps the last real
+  /// sighting so the offline banner can show when the device was actually reachable.
+  Device withState(Map<String, dynamic> partial, {bool? online}) => copyWith(
+        state: {...state, ...partial},
+        online: online,
+        lastSeenAt: online == false ? lastSeenAt : DateTime.now(),
+      );
 
   Capability? capability(String code) {
     for (final c in capabilities) {
