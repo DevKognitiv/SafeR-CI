@@ -34,7 +34,7 @@ from app.hub.services.device_service import DeviceService
 
 logger = logging.getLogger("safer.hub.automation.runner")
 
-__all__ = ["SceneRunner", "MAX_DELAY_SECONDS", "MAX_SCENE_DEPTH", "SCENE_RAN_TITLE"]
+__all__ = ["SceneRunner", "scene_summary", "MAX_DELAY_SECONDS", "MAX_SCENE_DEPTH", "SCENE_RAN_TITLE"]
 
 MAX_DELAY_SECONDS = 300.0
 MAX_SCENE_DEPTH = 3
@@ -138,9 +138,7 @@ class SceneRunner:
             return await self._run_scene_action(session, home_id, action, source, depth)
         raise AdapterError(f"Unknown action type '{atype}'", "invalid_input")
 
-    async def _device_command(
-        self, session: AsyncSession, home_id: str, action: Dict[str, Any], source: str
-    ) -> Dict[str, Any]:
+    async def _device_command(self, session: AsyncSession, home_id: str, action: Dict[str, Any]) -> Dict[str, Any]:
         device_id, code = action.get("device_id"), action.get("code")
         if not device_id or not code:
             raise AdapterError("device_command requires device_id and code", "invalid_input")
@@ -148,7 +146,6 @@ class SceneRunner:
         if device is None or device.home_id != home_id:
             raise AdapterError("Device not found in this home", "not_found")
         value = action.get("value")
-        del source  # the device service tags the change as "command"; kept for symmetry with other actions
         await self._service().command(session, device, code, value)
         return {"device_id": device.id, "code": code, "value": value, "state": {code: (device.state or {}).get(code)}}
 

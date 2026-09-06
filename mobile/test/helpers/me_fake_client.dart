@@ -15,7 +15,7 @@ class MeFakeHubClient extends FakeHubClient {
   /// Role of the signed-in user in the demo home.
   final String role;
 
-  late List<Home> homes_ = noHomes ? <Home>[] : [demoHome.copyWith()..toString(), ].map((_) => _withRole(demoHome)).toList();
+  late List<Home> homes_ = noHomes ? <Home>[] : [_withRole(demoHome)];
   final List<Integration> integrations_ = [
     Integration(id: 'int-1', homeId: FakeHubClient.homeId, brand: 'tuya', key: 'tuya_cloud:abc', name: 'Tuya Cloud (eu)', config: const {'region': 'eu'}, createdAt: DateTime.now().subtract(const Duration(days: 3))),
     Integration(id: 'int-2', homeId: FakeHubClient.homeId, brand: 'matter', key: 'matter:server', name: 'Serveur Matter', createdAt: DateTime.now().subtract(const Duration(hours: 5))),
