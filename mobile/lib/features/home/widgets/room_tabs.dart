@@ -30,17 +30,20 @@ class RoomTabBar extends StatelessWidget {
       for (final room in rooms) (id: room.id, label: room.name),
       if (showUnassigned) (id: kUnassignedRoomId, label: context.tr(fr: 'Non assignés', en: 'Unassigned')),
     ];
+    // Non-lazy row: a home has a handful of rooms and every pill stays reachable (scroll + ensureVisible).
     return SizedBox(
       height: height,
-      child: ListView.separated(
+      child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        itemCount: entries.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          return _RoomPill(label: entry.label, selected: entry.id == selected, onTap: () => onSelected(entry.id));
-        },
+        child: Row(
+          children: [
+            for (var i = 0; i < entries.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _RoomPill(label: entries[i].label, selected: entries[i].id == selected, onTap: () => onSelected(entries[i].id)),
+            ],
+          ],
+        ),
       ),
     );
   }

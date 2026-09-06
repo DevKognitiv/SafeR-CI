@@ -53,11 +53,15 @@ void main() {
       expect(find.text('Lampe salon'), findsNothing);
       expect(find.byType(DeviceTile), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Non assignés'));
+      await settle(tester);
       await tester.tap(find.text('Non assignés'));
       await settle(tester);
       expect(find.text('Interrupteur cuisine'), findsOneWidget);
       expect(find.text('Volet chambre'), findsNothing);
 
+      await tester.ensureVisible(find.text('Tous'));
+      await settle(tester);
       await tester.tap(find.text('Tous'));
       await settle(tester);
       expect(find.text('Lampe salon'), findsOneWidget);
@@ -95,7 +99,8 @@ void main() {
       await pumpAuthenticated(tester, const HomeScreen(), client: HomeFakeHubClient(weatherAvailable: false));
       expect(find.text('12 appareils'), findsOneWidget);
       expect(find.textContaining('12 en ligne'), findsOneWidget);
-      expect(find.textContaining('°C'), findsNothing);
+      expect(find.text('29.5°C'), findsNothing);
+      expect(find.textContaining('Humidité'), findsNothing);
     });
 
     testWidgets('long-press opens the device actions and renames the device', (tester) async {
@@ -109,6 +114,7 @@ void main() {
       await tester.tap(find.text('Renommer'));
       await settle(tester);
       await tester.enterText(find.byType(TextField), 'Prise salon');
+      await tester.pump();
       await tester.tap(find.text('Enregistrer'));
       await settle(tester);
       expect(find.text('Prise salon'), findsOneWidget);
@@ -139,6 +145,7 @@ void main() {
       await tester.tap(find.text('Ajouter une pièce'));
       await settle(tester);
       await tester.enterText(find.byType(TextField), 'Bureau');
+      await tester.pump(); // enable the confirm button (disabled while the field is empty)
       await tester.tap(find.text('Ajouter'));
       await settle(tester);
       expect(client.rooms_.map((r) => r.name), contains('Bureau'));
@@ -154,6 +161,7 @@ void main() {
       await tester.tap(find.text('Renommer'));
       await settle(tester);
       await tester.enterText(find.byType(TextField), 'Chambre parents');
+      await tester.pump();
       await tester.tap(find.text('Enregistrer'));
       await settle(tester);
       expect(find.text('Chambre parents'), findsOneWidget);
