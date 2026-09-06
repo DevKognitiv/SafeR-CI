@@ -445,15 +445,13 @@ class AutomationEngine:
         if not conditions:
             return True
         any_mode = (automation.match or "all") == "any"
-        outcome = False if any_mode else True
         for condition in conditions:
             ok = await self._condition_ok(session, automation.home_id, condition, moment)
             if any_mode and ok:
                 return True
             if not any_mode and not ok:
                 return False
-            outcome = ok if any_mode else outcome and ok
-        return outcome
+        return not any_mode  # all: every condition passed; any: none did
 
     async def _condition_ok(self, session: AsyncSession, home_id: str, condition: Dict[str, Any], moment: datetime) -> bool:
         ctype = condition.get("type")
