@@ -102,6 +102,30 @@ class MeFakeHubClient extends FakeHubClient {
     return Member(userId: current.userId, email: current.email, name: current.name, role: role, joinedAt: current.joinedAt);
   }
 
+  /// Extra messages (e.g. one linked to a device) merged with the shared demo messages.
+  List<HubMessage> extraMessages = [];
+
+  @override
+  Future<List<HubMessage>> messages(String homeId, {String? kind, bool unreadOnly = false, int limit = 50}) async {
+    final base = await super.messages(homeId, kind: kind, unreadOnly: unreadOnly, limit: limit);
+    final extras = extraMessages.where((m) => (kind == null || m.kind == kind) && (!unreadOnly || !m.read));
+    return [...extras, ...base];
+  }
+
+  @override
+  Future<HubMessage> markRead(String messageId) async {
+    final index = extraMessages.indexWhere((m) => m.id == messageId);
+    if (index < 0) return super.markRead(messageId);
+    extraMessages[index] = extraMessages[index].copyWith(read: true);
+    return extraMessages[index];
+  }
+
+  @override
+  Future<void> deleteMessage(String messageId) async {
+    extraMessages.removeWhere((m) => m.id == messageId);
+    return super.deleteMessage(messageId);
+  }
+
   @override
   Future<List<Integration>> integrations(String homeId) async {
     _guard();

@@ -255,10 +255,10 @@ async def test_parse_code_url_and_unknown(client, auth):
     assert parse_code("rtsp://cam.local/stream1").kind == "url"
 
     for garbage in ("hello world", "12345", "http://", "{not json", "ftp://x/y", "éà" * 500):
-        result = parse_code(garbage)
-        assert result.kind == "unknown" and result.brand is None and result.data["code"] == garbage.strip()
+        result = parse_code(garbage).model_dump()
+        assert result["kind"] == "unknown" and result["brand"] is None and result["data"]["code"] == garbage.strip()
     assert parse_code("   ").kind == "unknown"
-    assert parse_code('{"a": 1}').data["json"] == {"a": 1}
+    assert parse_code('{"a": 1}').model_dump()["data"]["json"] == {"a": 1}
     response = await client.post(f"{PREFIX}/onboarding/parse-code", json={"code": "nothing"}, headers=auth["headers"])
     assert response.status_code == 200 and response.json()["kind"] == "unknown"
     assert (await client.post(f"{PREFIX}/onboarding/parse-code", json={"code": ""}, headers=auth["headers"])).status_code == 422
