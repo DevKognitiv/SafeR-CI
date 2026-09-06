@@ -33,7 +33,6 @@ class ModeSelector<T> extends StatelessWidget {
               child: Semantics(
                 button: true,
                 selected: option.value == selected,
-                label: option.label,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(11),
                   onTap: enabled ? () => onSelected(option.value) : null,

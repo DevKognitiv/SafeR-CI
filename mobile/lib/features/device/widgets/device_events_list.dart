@@ -125,9 +125,12 @@ class DeviceEventsList extends ConsumerWidget {
                       decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
                       child: Icon(_iconFor(event), color: color, size: 20),
                     ),
-                    title: Text(deviceEventLabel(context, event), style: TextStyle(fontWeight: alert ? FontWeight.w700 : FontWeight.w500, color: alert ? SafeRColors.danger : null)),
+                    title: Text(deviceEventLabel(context, event),
+                        style: TextStyle(fontWeight: alert ? FontWeight.w700 : FontWeight.w500, color: alert ? SafeRColors.danger : null)),
                     subtitle: time == null ? null : Text(timeAgo(context, time)),
-                    trailing: time == null ? null : Text(DateFormat('dd/MM HH:mm').format(time), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    trailing: time == null
+                        ? null
+                        : Text(DateFormat('dd/MM HH:mm').format(time), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                   );
                 }),
               ],

@@ -81,7 +81,8 @@ class DeviceFakeHubClient extends FakeHubClient {
   @override
   Future<List<Device>> devices(String homeId, {String? roomId, String? category, String? brand}) async {
     final base = await super.devices(homeId, roomId: roomId, category: category, brand: brand);
-    final matching = extras.where((d) => (roomId == null || d.roomId == roomId) && (category == null || d.category == category) && (brand == null || d.brand == brand));
+    final matching =
+        extras.where((d) => (roomId == null || d.roomId == roomId) && (category == null || d.category == category) && (brand == null || d.brand == brand));
     return [...base, ...matching].map(_apply).toList();
   }
 

@@ -60,7 +60,8 @@ class SensorPanel extends ConsumerWidget {
       final motion = device.boolValue('motion') ?? false;
       return _Status(
         label: motion ? context.tr(fr: 'MOUVEMENT', en: 'MOTION') : context.tr(fr: 'CALME', en: 'CLEAR'),
-        description: motion ? context.tr(fr: 'Un mouvement est détecté', en: 'Motion detected') : context.tr(fr: 'Aucun mouvement récent', en: 'No recent motion'),
+        description:
+            motion ? context.tr(fr: 'Un mouvement est détecté', en: 'Motion detected') : context.tr(fr: 'Aucun mouvement récent', en: 'No recent motion'),
         color: motion ? SafeRColors.warning : SafeRColors.success,
         icon: motion ? Icons.directions_run : Icons.motion_photos_off_outlined,
       );
@@ -184,7 +185,22 @@ class SensorPanel extends ConsumerWidget {
         ],
         GenericControls(
           device: device,
-          exclude: const {'contact', 'open', 'motion', 'smoke', 'co', 'water_leak', 'gas', 'alarm', 'temperature', 'humidity', 'illuminance', 'battery', 'signal', 'tamper'},
+          exclude: const {
+            'contact',
+            'open',
+            'motion',
+            'smoke',
+            'co',
+            'water_leak',
+            'gas',
+            'alarm',
+            'temperature',
+            'humidity',
+            'illuminance',
+            'battery',
+            'signal',
+            'tamper'
+          },
         ),
         SectionHeader(title: context.tr(fr: 'Historique', en: 'History'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
         DeviceEventsList(deviceId: device.id),

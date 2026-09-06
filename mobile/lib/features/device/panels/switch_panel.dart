@@ -90,10 +90,22 @@ class SwitchPanel extends ConsumerWidget {
             child: Row(
               children: [
                 if (power != null)
-                  Expanded(child: ReadoutTile(value: formatNumber(power, decimals: 1), unit: device.capability('power')?.unit ?? 'W', label: context.tr(fr: 'Puissance', en: 'Power'), icon: Icons.bolt, color: SafeRColors.warning)),
+                  Expanded(
+                      child: ReadoutTile(
+                          value: formatNumber(power, decimals: 1),
+                          unit: device.capability('power')?.unit ?? 'W',
+                          label: context.tr(fr: 'Puissance', en: 'Power'),
+                          icon: Icons.bolt,
+                          color: SafeRColors.warning)),
                 if (power != null && energy != null) const SizedBox(width: 12),
                 if (energy != null)
-                  Expanded(child: ReadoutTile(value: formatNumber(energy, decimals: 2), unit: device.capability('energy')?.unit ?? 'kWh', label: context.tr(fr: 'Énergie', en: 'Energy'), icon: Icons.electric_meter_outlined, color: SafeRColors.success)),
+                  Expanded(
+                      child: ReadoutTile(
+                          value: formatNumber(energy, decimals: 2),
+                          unit: device.capability('energy')?.unit ?? 'kWh',
+                          label: context.tr(fr: 'Énergie', en: 'Energy'),
+                          icon: Icons.electric_meter_outlined,
+                          color: SafeRColors.success)),
               ],
             ),
           ),

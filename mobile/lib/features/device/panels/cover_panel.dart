@@ -27,14 +27,10 @@ class CoverPanel extends ConsumerWidget {
     Widget button(String value, IconData icon, String label) {
       final supported = control?.values.contains(value) ?? false;
       return Expanded(
-        child: Semantics(
-          button: true,
-          label: label,
-          child: FilledButton.tonal(
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            onPressed: enabled && supported ? () => sendDeviceCommand(context, ref, device, 'control', value) : null,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon), const SizedBox(height: 2), Text(label, style: const TextStyle(fontSize: 12))]),
-          ),
+        child: FilledButton.tonal(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+          onPressed: enabled && supported ? () => sendDeviceCommand(context, ref, device, 'control', value) : null,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon), const SizedBox(height: 2), Text(label, style: const TextStyle(fontSize: 12))]),
         ),
       );
     }
@@ -49,7 +45,10 @@ class CoverPanel extends ConsumerWidget {
               Container(
                 height: 140,
                 width: 180,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.colorScheme.outlineVariant, width: 2), color: const Color(0xFFBFDBFE).withValues(alpha: 0.5)),
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: theme.colorScheme.outlineVariant, width: 2),
+                    color: const Color(0xFFBFDBFE).withValues(alpha: 0.5)),
                 clipBehavior: Clip.antiAlias,
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -59,7 +58,10 @@ class CoverPanel extends ConsumerWidget {
                     widthFactor: 1,
                     child: Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [SafeRColors.primary.withValues(alpha: 0.9), SafeRColors.primaryDark]),
+                        gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [SafeRColors.primary.withValues(alpha: 0.9), SafeRColors.primaryDark]),
                       ),
                     ),
                   ),

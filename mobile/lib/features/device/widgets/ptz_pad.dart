@@ -72,6 +72,7 @@ class _PtzKey extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Semantics(
+      container: true,
       button: true,
       enabled: enabled,
       label: label,
@@ -83,7 +84,10 @@ class _PtzKey extends StatelessWidget {
           width: 52,
           height: 52,
           margin: const EdgeInsets.all(4),
-          decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.surface, boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]),
+          decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: theme.colorScheme.surface,
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]),
           child: Icon(icon, size: 30, color: enabled ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
         ),
       ),

@@ -88,7 +88,8 @@ class _StreamErrorOverlay extends StatelessWidget {
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 12), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+              child: Text(message,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(height: 8),
             TextButton.icon(
@@ -244,7 +245,8 @@ class _MediaKitVideoState extends State<_MediaKitVideo> {
         alignment: Alignment.bottomLeft,
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: StateChip(label: context.tr(fr: 'Lecture vidéo indisponible', en: 'Video playback unavailable'), color: Colors.white, icon: Icons.videocam_off_outlined),
+          child: StateChip(
+              label: context.tr(fr: 'Lecture vidéo indisponible', en: 'Video playback unavailable'), color: Colors.white, icon: Icons.videocam_off_outlined),
         ),
       );
     }

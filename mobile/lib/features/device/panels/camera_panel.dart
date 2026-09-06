@@ -61,7 +61,8 @@ class _CameraPanelState extends ConsumerState<CameraPanel> {
                   child: Image.memory(
                     bytes,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Center(child: Text(context.tr(fr: 'Image illisible', en: 'Unreadable image'), style: const TextStyle(color: Colors.white70))),
+                    errorBuilder: (_, __, ___) =>
+                        Center(child: Text(context.tr(fr: 'Image illisible', en: 'Unreadable image'), style: const TextStyle(color: Colors.white70))),
                   ),
                 ),
               ),
@@ -111,10 +112,20 @@ class _CameraPanelState extends ConsumerState<CameraPanel> {
                   children: [
                     OnlineChip(online: device.online),
                     if (motion != null)
-                      BoolChip(active: motion, activeLabel: context.tr(fr: 'MOUVEMENT', en: 'MOTION'), inactiveLabel: context.tr(fr: 'CALME', en: 'CLEAR'), icon: Icons.directions_run),
+                      BoolChip(
+                          active: motion,
+                          activeLabel: context.tr(fr: 'MOUVEMENT', en: 'MOTION'),
+                          inactiveLabel: context.tr(fr: 'CALME', en: 'CLEAR'),
+                          icon: Icons.directions_run),
                     if (recording != null)
-                      BoolChip(active: recording, activeLabel: 'REC', inactiveLabel: context.tr(fr: 'Pas d\'enregistrement', en: 'Not recording'), activeColor: SafeRColors.danger, icon: Icons.fiber_manual_record),
-                    if (doorbell == true) StateChip(label: context.tr(fr: 'Sonnette pressée', en: 'Doorbell pressed'), icon: Icons.doorbell, color: SafeRColors.warning),
+                      BoolChip(
+                          active: recording,
+                          activeLabel: 'REC',
+                          inactiveLabel: context.tr(fr: 'Pas d\'enregistrement', en: 'Not recording'),
+                          activeColor: SafeRColors.danger,
+                          icon: Icons.fiber_manual_record),
+                    if (doorbell == true)
+                      StateChip(label: context.tr(fr: 'Sonnette pressée', en: 'Doorbell pressed'), icon: Icons.doorbell, color: SafeRColors.warning),
                   ],
                 ),
               ),
@@ -142,7 +153,9 @@ class _CameraPanelState extends ConsumerState<CameraPanel> {
               Expanded(
                 child: FilledButton.tonalIcon(
                   onPressed: enabled && !_snapshotBusy ? _snapshot : null,
-                  icon: _snapshotBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.photo_camera_outlined),
+                  icon: _snapshotBusy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.photo_camera_outlined),
                   label: Text(context.tr(fr: 'Instantané', en: 'Snapshot')),
                 ),
               ),
@@ -205,7 +218,19 @@ class _CameraPanelState extends ConsumerState<CameraPanel> {
         ],
         GenericControls(
           device: device,
-          exclude: const {'stream_main', 'stream_sub', 'snapshot', 'ptz', 'motion', 'recording', 'siren', 'light', 'privacy_mode', 'night_vision', 'doorbell_pressed'},
+          exclude: const {
+            'stream_main',
+            'stream_sub',
+            'snapshot',
+            'ptz',
+            'motion',
+            'recording',
+            'siren',
+            'light',
+            'privacy_mode',
+            'night_vision',
+            'doorbell_pressed'
+          },
         ),
         if (device.category == 'nvr') ...[
           SectionHeader(title: context.tr(fr: 'Canaux', en: 'Channels'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),

@@ -28,7 +28,8 @@ class DeviceOfflineBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(context.tr(fr: 'Appareil hors ligne', en: 'Device offline'), style: const TextStyle(color: SafeRColors.warning, fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text(context.tr(fr: 'Appareil hors ligne', en: 'Device offline'),
+                      style: const TextStyle(color: SafeRColors.warning, fontWeight: FontWeight.w700, fontSize: 13)),
                   Text(subtitle, style: TextStyle(color: SafeRColors.warning.withValues(alpha: 0.9), fontSize: 12)),
                 ],
               ),
@@ -36,7 +37,9 @@ class DeviceOfflineBanner extends StatelessWidget {
             TextButton.icon(
               onPressed: busy ? null : onRefresh,
               style: TextButton.styleFrom(foregroundColor: SafeRColors.warning, minimumSize: const Size(44, 44)),
-              icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: SafeRColors.warning)) : const Icon(Icons.refresh, size: 18),
+              icon: busy
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: SafeRColors.warning))
+                  : const Icon(Icons.refresh, size: 18),
               label: Text(context.tr(fr: 'Actualiser', en: 'Refresh')),
             ),
           ],

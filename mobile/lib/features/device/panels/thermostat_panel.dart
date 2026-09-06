@@ -82,13 +82,16 @@ class ThermostatPanel extends ConsumerWidget {
               Container(
                 width: 180,
                 height: 180,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: 0.10), border: Border.all(color: accent.withValues(alpha: 0.5), width: 6)),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle, color: accent.withValues(alpha: 0.10), border: Border.all(color: accent.withValues(alpha: 0.5), width: 6)),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text.rich(
                       TextSpan(children: [
-                        TextSpan(text: temp(current), style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
+                        TextSpan(
+                            text: temp(current),
+                            style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
                         TextSpan(text: unit, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                       ]),
                     ),
@@ -112,7 +115,8 @@ class ThermostatPanel extends ConsumerWidget {
                     ),
                     SizedBox(
                       width: 120,
-                      child: Text('${temp(setpoint)} $unit', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: accent)),
+                      child: Text('${temp(setpoint)} $unit',
+                          textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: accent)),
                     ),
                     IconButton.filledTonal(
                       tooltip: context.tr(fr: 'Augmenter', en: 'Increase'),
@@ -132,7 +136,10 @@ class ThermostatPanel extends ConsumerWidget {
           PanelCard(
             title: context.tr(fr: 'Mode', en: 'Mode'),
             child: ModeSelector<String>(
-              options: [for (final value in modeCap.values) ModeOption(value: value, label: enumValueLabel(context, value), icon: modeIcon(value), color: modeColor(value))],
+              options: [
+                for (final value in modeCap.values)
+                  ModeOption(value: value, label: enumValueLabel(context, value), icon: modeIcon(value), color: modeColor(value))
+              ],
               selected: mode,
               enabled: device.online,
               onSelected: (value) => sendDeviceCommand(context, ref, device, 'mode', value),
@@ -144,7 +151,12 @@ class ThermostatPanel extends ConsumerWidget {
           PanelCard(
             child: Row(
               children: [
-                Expanded(child: ReadoutTile(value: formatNumber(humidity, decimals: 0), unit: device.capability('humidity_current')?.unit ?? '%', label: context.tr(fr: 'Humidité', en: 'Humidity'), icon: Icons.water_drop_outlined)),
+                Expanded(
+                    child: ReadoutTile(
+                        value: formatNumber(humidity, decimals: 0),
+                        unit: device.capability('humidity_current')?.unit ?? '%',
+                        label: context.tr(fr: 'Humidité', en: 'Humidity'),
+                        icon: Icons.water_drop_outlined)),
               ],
             ),
           ),

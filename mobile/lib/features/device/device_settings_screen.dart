@@ -133,106 +133,119 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
       appBar: AppBar(title: Text(context.tr(fr: "Paramètres de l'appareil", en: 'Device settings'))),
       body: Stack(
         children: [
-          ListView(
+          SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Semantics(
-                        button: true,
-                        label: context.tr(fr: "Changer l'icône", en: 'Change icon'),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: _busy ? null : _pickIcon,
-                          child: Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(color: SafeRColors.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
-                            child: Icon(iconFromName(device.icon, fallback: categoryIcon(device.category)), color: SafeRColors.primary, size: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Semantics(
+                          button: true,
+                          label: context.tr(fr: "Changer l'icône", en: 'Change icon'),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: _busy ? null : _pickIcon,
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(color: SafeRColors.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
+                              child: Icon(iconFromName(device.icon, fallback: categoryIcon(device.category)), color: SafeRColors.primary, size: 32),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(device.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 4),
-                            Text([categoryLabel(context, device.category), brand?.name ?? device.brand].join(' · '),
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                            const SizedBox(height: 8),
-                            OnlineChip(online: device.online),
-                          ],
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(device.name,
+                                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 4),
+                              Text([categoryLabel(context, device.category), brand?.name ?? device.brand].join(' · '),
+                                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                              const SizedBox(height: 8),
+                              OnlineChip(online: device.online),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Column(
+                    children: [
+                      ValueRow(icon: Icons.edit_outlined, label: context.tr(fr: 'Nom', en: 'Name'), value: device.name, onTap: _busy ? null : _rename),
+                      const Divider(indent: 48),
+                      ValueRow(
+                          icon: Icons.meeting_room_outlined,
+                          label: context.tr(fr: 'Pièce', en: 'Room'),
+                          value: room?.name ?? context.tr(fr: 'Aucune pièce', en: 'No room'),
+                          onTap: _busy ? null : _pickRoom),
+                      const Divider(indent: 48),
+                      ValueRow(
+                          icon: Icons.emoji_objects_outlined,
+                          label: context.tr(fr: 'Icône', en: 'Icon'),
+                          value: device.icon ?? context.tr(fr: 'Par défaut', en: 'Default'),
+                          onTap: _busy ? null : _pickIcon),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: Column(
-                  children: [
-                    ValueRow(icon: Icons.edit_outlined, label: context.tr(fr: 'Nom', en: 'Name'), value: device.name, onTap: _busy ? null : _rename),
-                    const Divider(indent: 48),
-                    ValueRow(icon: Icons.meeting_room_outlined, label: context.tr(fr: 'Pièce', en: 'Room'), value: room?.name ?? context.tr(fr: 'Aucune pièce', en: 'No room'), onTap: _busy ? null : _pickRoom),
-                    const Divider(indent: 48),
-                    ValueRow(icon: Icons.emoji_objects_outlined, label: context.tr(fr: 'Icône', en: 'Icon'), value: device.icon ?? context.tr(fr: 'Par défaut', en: 'Default'), onTap: _busy ? null : _pickIcon),
-                  ],
+                SectionHeader(title: context.tr(fr: 'Informations', en: 'Information'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
+                Card(
+                  child: Column(
+                    children: [
+                      ValueRow(label: context.tr(fr: 'Marque', en: 'Brand'), value: brand?.name ?? device.brand),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Protocole', en: 'Protocol'), value: device.protocol.isEmpty ? none : device.protocol),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Modèle', en: 'Model'), value: device.model ?? none),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Fabricant', en: 'Manufacturer'), value: device.manufacturer ?? none),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Firmware', en: 'Firmware'), value: device.firmware ?? none),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Identifiant', en: 'External ID'), value: device.externalId.isEmpty ? none : device.externalId),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(
+                        label: context.tr(fr: 'État', en: 'Status'),
+                        value: device.online ? context.tr(fr: 'En ligne', en: 'Online') : context.tr(fr: 'Hors ligne', en: 'Offline'),
+                        valueColor: device.online ? SafeRColors.success : SafeRColors.danger,
+                      ),
+                      const Divider(indent: 16, endIndent: 16),
+                      ValueRow(label: context.tr(fr: 'Dernière activité', en: 'Last seen'), value: lastSeen == null ? none : timeAgo(context, lastSeen)),
+                    ],
+                  ),
                 ),
-              ),
-              SectionHeader(title: context.tr(fr: 'Informations', en: 'Information'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
-              Card(
-                child: Column(
-                  children: [
-                    ValueRow(label: context.tr(fr: 'Marque', en: 'Brand'), value: brand?.name ?? device.brand),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Protocole', en: 'Protocol'), value: device.protocol.isEmpty ? none : device.protocol),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Modèle', en: 'Model'), value: device.model ?? none),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Fabricant', en: 'Manufacturer'), value: device.manufacturer ?? none),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Firmware', en: 'Firmware'), value: device.firmware ?? none),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Identifiant', en: 'External ID'), value: device.externalId.isEmpty ? none : device.externalId),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(
-                      label: context.tr(fr: 'État', en: 'Status'),
-                      value: device.online ? context.tr(fr: 'En ligne', en: 'Online') : context.tr(fr: 'Hors ligne', en: 'Offline'),
-                      valueColor: device.online ? SafeRColors.success : SafeRColors.danger,
-                    ),
-                    const Divider(indent: 16, endIndent: 16),
-                    ValueRow(label: context.tr(fr: 'Dernière activité', en: 'Last seen'), value: lastSeen == null ? none : timeAgo(context, lastSeen)),
-                  ],
+                SectionHeader(title: context.tr(fr: 'Historique', en: 'History'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
+                DeviceEventsList(deviceId: device.id, limit: 10),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.refresh),
+                    title: Text(context.tr(fr: 'Actualiser', en: 'Refresh')),
+                    subtitle: Text(context.tr(fr: "Interroger l'appareil maintenant", en: 'Query the device now')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _busy ? null : _refresh,
+                  ),
                 ),
-              ),
-              SectionHeader(title: context.tr(fr: 'Historique', en: 'History'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
-              DeviceEventsList(deviceId: device.id, limit: 10),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.refresh),
-                  title: Text(context.tr(fr: 'Actualiser', en: 'Refresh')),
-                  subtitle: Text(context.tr(fr: "Interroger l'appareil maintenant", en: 'Query the device now')),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _busy ? null : _refresh,
+                SectionHeader(title: context.tr(fr: 'Zone de danger', en: 'Danger zone'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.delete_outline, color: SafeRColors.danger),
+                    title: Text(context.tr(fr: "Supprimer l'appareil", en: 'Remove device'),
+                        style: const TextStyle(color: SafeRColors.danger, fontWeight: FontWeight.w600)),
+                    subtitle: Text(context.tr(fr: 'Retire l\'appareil de cette maison', en: 'Removes the device from this home')),
+                    onTap: _busy ? null : _remove,
+                  ),
                 ),
-              ),
-              SectionHeader(title: context.tr(fr: 'Zone de danger', en: 'Danger zone'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.delete_outline, color: SafeRColors.danger),
-                  title: Text(context.tr(fr: "Supprimer l'appareil", en: 'Remove device'), style: const TextStyle(color: SafeRColors.danger, fontWeight: FontWeight.w600)),
-                  subtitle: Text(context.tr(fr: 'Retire l\'appareil de cette maison', en: 'Removes the device from this home')),
-                  onTap: _busy ? null : _remove,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
           if (_busy) const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
         ],

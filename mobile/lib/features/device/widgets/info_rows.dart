@@ -101,7 +101,8 @@ class GaugeTile extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               SizedBox.expand(
-                child: CircularProgressIndicator(value: progress, strokeWidth: 8, color: c, backgroundColor: c.withValues(alpha: 0.15), strokeCap: StrokeCap.round),
+                child: CircularProgressIndicator(
+                    value: progress, strokeWidth: 8, color: c, backgroundColor: c.withValues(alpha: 0.15), strokeCap: StrokeCap.round),
               ),
               Column(
                 mainAxisSize: MainAxisSize.min,

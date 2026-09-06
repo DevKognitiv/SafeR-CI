@@ -40,7 +40,9 @@ class GatewayPanel extends ConsumerWidget {
                     Text(categoryLabel(context, device.category), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                     if (count != null)
                       Text(
-                        context.tr(fr: '${count.round()} appareil${count.round() > 1 ? 's' : ''} connecté${count.round() > 1 ? 's' : ''}', en: '${count.round()} connected device${count.round() > 1 ? 's' : ''}'),
+                        context.tr(
+                            fr: '${count.round()} appareil${count.round() > 1 ? 's' : ''} connecté${count.round() > 1 ? 's' : ''}',
+                            en: '${count.round()} connected device${count.round() > 1 ? 's' : ''}'),
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                       ),
                   ],

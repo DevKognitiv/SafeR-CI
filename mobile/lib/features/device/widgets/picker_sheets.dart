@@ -24,7 +24,8 @@ Future<RoomChoice?> showRoomPickerSheet(BuildContext context, {required List<Roo
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text(context.tr(fr: 'Choisir une pièce', en: 'Choose a room'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                child:
+                    Text(context.tr(fr: 'Choisir une pièce', en: 'Choose a room'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               ),
               Flexible(
                 child: ListView(
@@ -101,7 +102,8 @@ Future<String?> showIconPickerSheet(BuildContext context, {required String? curr
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Text(context.tr(fr: 'Choisir une icône', en: 'Choose an icon'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                child:
+                    Text(context.tr(fr: 'Choisir une icône', en: 'Choose an icon'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               ),
               Flexible(
                 child: GridView.count(
@@ -113,6 +115,7 @@ Future<String?> showIconPickerSheet(BuildContext context, {required String? curr
                   children: [
                     for (final name in kDeviceIconNames)
                       Semantics(
+                        container: true,
                         button: true,
                         selected: name == current,
                         label: name.replaceAll('_', ' '),
@@ -121,7 +124,9 @@ Future<String?> showIconPickerSheet(BuildContext context, {required String? curr
                           onTap: () => Navigator.of(context).pop(name),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: name == current ? theme.colorScheme.primary.withValues(alpha: 0.16) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              color: name == current
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.16)
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(14),
                               border: name == current ? Border.all(color: theme.colorScheme.primary, width: 2) : null,
                             ),

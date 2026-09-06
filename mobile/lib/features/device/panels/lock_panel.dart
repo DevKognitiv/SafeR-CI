@@ -32,7 +32,8 @@ class LockPanel extends ConsumerWidget {
       final confirmed = await showConfirmDialog(
         context,
         icon: unlocking ? Icons.lock_open : Icons.lock,
-        title: unlocking ? context.tr(fr: 'Déverrouiller la serrure ?', en: 'Unlock the door?') : context.tr(fr: 'Verrouiller la serrure ?', en: 'Lock the door?'),
+        title:
+            unlocking ? context.tr(fr: 'Déverrouiller la serrure ?', en: 'Unlock the door?') : context.tr(fr: 'Verrouiller la serrure ?', en: 'Lock the door?'),
         message: unlocking
             ? context.tr(fr: '${device.name} sera déverrouillée immédiatement.', en: '${device.name} will be unlocked immediately.')
             : context.tr(fr: '${device.name} sera verrouillée immédiatement.', en: '${device.name} will be locked immediately.'),

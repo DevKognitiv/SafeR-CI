@@ -39,7 +39,11 @@ class _DeviceScaffoldState extends ConsumerState<_DeviceScaffold> {
     try {
       final updated = await ref.read(devicesProvider(widget.device.homeId).notifier).refreshDevice(widget.device.id);
       if (!mounted) return;
-      showSnack(context, updated.online ? context.tr(fr: 'Appareil de nouveau en ligne', en: 'Device back online') : context.tr(fr: 'Appareil toujours hors ligne', en: 'Device still offline'));
+      showSnack(
+          context,
+          updated.online
+              ? context.tr(fr: 'Appareil de nouveau en ligne', en: 'Device back online')
+              : context.tr(fr: 'Appareil toujours hors ligne', en: 'Device still offline'));
     } catch (e) {
       if (mounted) showErrorSnack(context, e);
     } finally {

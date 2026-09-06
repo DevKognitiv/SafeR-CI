@@ -55,9 +55,12 @@ class AlarmPanel extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.tr(fr: 'ALARME DÉCLENCHÉE', en: 'ALARM TRIGGERED'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                      Text(context.tr(fr: 'ALARME DÉCLENCHÉE', en: 'ALARM TRIGGERED'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
                       Text(
-                        zone != null && zone.isNotEmpty ? context.tr(fr: 'Zone : $zone', en: 'Zone: $zone') : context.tr(fr: 'Désarmez pour arrêter la sirène', en: 'Disarm to stop the siren'),
+                        zone != null && zone.isNotEmpty
+                            ? context.tr(fr: 'Zone : $zone', en: 'Zone: $zone')
+                            : context.tr(fr: 'Désarmez pour arrêter la sirène', en: 'Disarm to stop the siren'),
                         style: const TextStyle(color: Colors.white),
                       ),
                     ],
@@ -76,7 +79,8 @@ class AlarmPanel extends ConsumerWidget {
                 width: 96,
                 height: 96,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: (alarm ? SafeRColors.danger : modeColor).withValues(alpha: 0.14)),
-                child: Icon(alarm ? Icons.notifications_active : (mode == 'disarmed' ? Icons.shield_outlined : Icons.shield), size: 48, color: alarm ? SafeRColors.danger : modeColor),
+                child: Icon(alarm ? Icons.notifications_active : (mode == 'disarmed' ? Icons.shield_outlined : Icons.shield),
+                    size: 48, color: alarm ? SafeRColors.danger : modeColor),
               ),
               const SizedBox(height: 12),
               Text(securityModeLabel(context, mode), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: modeColor)),
@@ -91,7 +95,10 @@ class AlarmPanel extends ConsumerWidget {
               if (armCap != null) ...[
                 const SizedBox(height: 20),
                 ModeSelector<String>(
-                  options: [for (final value in modes) ModeOption(value: value, label: securityModeLabel(context, value), icon: modeIcon(value), color: SafeRColors.forSecurityMode(value))],
+                  options: [
+                    for (final value in modes)
+                      ModeOption(value: value, label: securityModeLabel(context, value), icon: modeIcon(value), color: SafeRColors.forSecurityMode(value))
+                  ],
                   selected: mode,
                   enabled: device.online,
                   onSelected: (value) => sendDeviceCommand(context, ref, device, 'arm_mode', value),

@@ -32,6 +32,7 @@ class BigPowerButton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Semantics(
+          container: true,
           button: true,
           enabled: enabled,
           toggled: active,
@@ -60,7 +61,8 @@ class BigPowerButton extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             caption!,
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: active ? color : theme.colorScheme.onSurfaceVariant, letterSpacing: 1),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700, color: active ? color : theme.colorScheme.onSurfaceVariant, letterSpacing: 1),
           ),
         ],
       ],

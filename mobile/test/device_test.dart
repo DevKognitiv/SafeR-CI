@@ -42,8 +42,6 @@ Future<({ProviderContainer container, GoRouter router, DeviceFakeHubClient clien
     ],
   );
   addTearDown(router.dispose);
-  final handle = tester.ensureSemantics();
-  addTearDown(handle.dispose);
   final container = await pumpApp(
     tester,
     InheritedGoRouter(goRouter: router, child: screen),
@@ -151,18 +149,17 @@ void main() {
     });
 
     testWidgets('smoke sensor in alarm shows a red hero', (tester) async {
-      final client = DeviceFakeHubClient();
-      await client.sendCommands('dev-smoke', const []); // no-op, keeps the fake API shape
-      final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-smoke'), client: client);
+      final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-smoke'));
       expect(find.text('OK'), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
       // Push an alarm state through the notifier (as a realtime event would).
-      final devices = r.container.read(devicesProvider(FakeHubClient.homeId).notifier);
-      final smoke = devices.byId('dev-smoke')!;
-      devices.addAll([]);
-      r.container.read(devicesProvider(FakeHubClient.homeId).notifier).state =
-          AsyncData([for (final d in r.container.read(devicesProvider(FakeHubClient.homeId)).value!) d.id == smoke.id ? d.withState({'smoke': true}) : d]);
+      final notifier = r.container.read(devicesProvider(FakeHubClient.homeId).notifier);
+      notifier.state = AsyncData([
+        for (final d in notifier.state.value!) d.id == 'dev-smoke' ? d.withState({'smoke': true}) : d
+      ]);
       await settle(tester);
       expect(find.text('FUMÉE !'), findsOneWidget);
+      expect(find.text('OK'), findsNothing);
     });
 
     testWidgets('camera panel renders the placeholder player, toggles quality and sends ptz', (tester) async {
@@ -259,7 +256,7 @@ void main() {
     testWidgets('cover panel sends control commands and shows the position', (tester) async {
       final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-cover'));
       expect(find.text('100 %'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel('Fermer'));
+      await tester.tap(find.text('Fermer'));
       await settle(tester);
       expect(r.client.commands.single.code, 'control');
       expect(r.client.commands.single.value, 'close');
@@ -348,10 +345,10 @@ void main() {
 
       await tester.tap(find.text('Icône'));
       await settle(tester);
-      await tester.tap(find.bySemanticsLabel('light'));
+      await tester.tap(find.bySemanticsLabel('router'));
       await settle(tester);
       devices = await r.client.devices(FakeHubClient.homeId);
-      expect(devices.firstWhere((d) => d.id == 'dev-light').icon, 'light');
+      expect(devices.firstWhere((d) => d.id == 'dev-light').icon, 'router');
       expect(find.text('Icône mise à jour'), findsOneWidget);
     });
 
