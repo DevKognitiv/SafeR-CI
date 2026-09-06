@@ -31,7 +31,7 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
         if (json == null || json['id'] == null) return;
         // The realtime payload is a summary; fetch the full record.
         ref.read(hubClientProvider).device(json['id'] as String).then((device) {
-          final current = state.value ?? const <Device>[];
+          final current = state.valueOrNull ?? const <Device>[];
           if (current.any((d) => d.id == device.id)) return;
           state = AsyncData([...current, device]);
         }).catchError((_) {});
@@ -45,7 +45,7 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
   }
 
   Device? byId(String id) {
-    for (final d in state.value ?? const <Device>[]) {
+    for (final d in state.valueOrNull ?? const <Device>[]) {
       if (d.id == id) return d;
     }
     return null;
@@ -91,13 +91,13 @@ class DevicesNotifier extends FamilyAsyncNotifier<List<Device>, String> {
 
   Future<void> remove(String deviceId) async {
     await ref.read(hubClientProvider).deleteDevice(deviceId);
-    final devices = state.value ?? const <Device>[];
+    final devices = state.valueOrNull ?? const <Device>[];
     state = AsyncData(devices.where((d) => d.id != deviceId && d.parentId != deviceId).toList());
   }
 
   /// Add freshly paired devices without a round-trip.
   void addAll(List<Device> devices) {
-    final current = state.value ?? const <Device>[];
+    final current = state.valueOrNull ?? const <Device>[];
     final ids = current.map((d) => d.id).toSet();
     state = AsyncData([...current, ...devices.where((d) => !ids.contains(d.id))]);
   }
@@ -107,7 +107,7 @@ final devicesProvider = AsyncNotifierProvider.family<DevicesNotifier, List<Devic
 
 /// A single device from the cached list (falls back to a fetch when unknown).
 final deviceProvider = Provider.family<Device?, ({String homeId, String deviceId})>((ref, key) {
-  final devices = ref.watch(devicesProvider(key.homeId)).value ?? const [];
+  final devices = ref.watch(devicesProvider(key.homeId)).valueOrNull ?? const [];
   for (final d in devices) {
     if (d.id == key.deviceId) return d;
   }
@@ -116,7 +116,7 @@ final deviceProvider = Provider.family<Device?, ({String homeId, String deviceId
 
 /// Devices filtered by room (null room = all, 'none' = unassigned).
 final roomDevicesProvider = Provider.family<List<Device>, ({String homeId, String? roomId})>((ref, key) {
-  final devices = ref.watch(devicesProvider(key.homeId)).value ?? const [];
+  final devices = ref.watch(devicesProvider(key.homeId)).valueOrNull ?? const [];
   final visible = devices.where((d) => d.parentId == null || d.category == 'camera' || d.category == 'alarm_zone' || d.isSensor);
   if (key.roomId == null) return visible.toList();
   if (key.roomId == 'none') return visible.where((d) => d.roomId == null).toList();

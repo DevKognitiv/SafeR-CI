@@ -19,7 +19,7 @@ class SliverActionList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverReorderableList(
           itemCount: actions.length,
-          onReorder: (oldIndex, newIndex) => onReorder(oldIndex, newIndex > oldIndex ? newIndex - 1 : newIndex),
+          onReorderItem: onReorder,
           itemBuilder: (context, index) => Padding(
             key: ObjectKey(actions[index]),
             padding: const EdgeInsets.only(bottom: 8),

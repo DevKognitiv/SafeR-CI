@@ -26,7 +26,7 @@ class ScenesNotifier extends FamilyAsyncNotifier<List<Scene>, String> {
 
   Future<void> delete(String sceneId) async {
     await ref.read(hubClientProvider).deleteScene(sceneId);
-    state = AsyncData((state.value ?? const []).where((s) => s.id != sceneId).toList());
+    state = AsyncData((state.valueOrNull ?? const []).where((s) => s.id != sceneId).toList());
   }
 
   Future<Map<String, dynamic>> run(String sceneId) async {
@@ -59,12 +59,12 @@ class AutomationsNotifier extends FamilyAsyncNotifier<List<Automation>, String> 
 
   Future<void> delete(String id) async {
     await ref.read(hubClientProvider).deleteAutomation(id);
-    state = AsyncData((state.value ?? const []).where((a) => a.id != id).toList());
+    state = AsyncData((state.valueOrNull ?? const []).where((a) => a.id != id).toList());
   }
 
   Future<void> setEnabled(String id, bool enabled) async {
     final updated = await ref.read(hubClientProvider).setAutomationEnabled(id, enabled);
-    state = AsyncData([for (final a in state.value ?? const <Automation>[]) a.id == id ? updated : a]);
+    state = AsyncData([for (final a in state.valueOrNull ?? const <Automation>[]) a.id == id ? updated : a]);
   }
 
   Future<Map<String, dynamic>> trigger(String id) => ref.read(hubClientProvider).triggerAutomation(id);
@@ -130,7 +130,7 @@ class MessagesNotifier extends FamilyAsyncNotifier<List<HubMessage>, String> {
       final event = next.value;
       if (event?.type == HubEvent.messageNew && event?.message != null) {
         final message = HubMessage.fromJson(event!.message!);
-        final current = state.value ?? const <HubMessage>[];
+        final current = state.valueOrNull ?? const <HubMessage>[];
         if (!current.any((m) => m.id == message.id)) state = AsyncData([message, ...current]);
         ref.invalidate(unreadCountProvider(arg));
       }
@@ -145,19 +145,19 @@ class MessagesNotifier extends FamilyAsyncNotifier<List<HubMessage>, String> {
 
   Future<void> markRead(String id) async {
     await ref.read(hubClientProvider).markRead(id);
-    state = AsyncData([for (final m in state.value ?? const <HubMessage>[]) m.id == id ? m.copyWith(read: true) : m]);
+    state = AsyncData([for (final m in state.valueOrNull ?? const <HubMessage>[]) m.id == id ? m.copyWith(read: true) : m]);
     ref.invalidate(unreadCountProvider(arg));
   }
 
   Future<void> markAllRead({String? kind}) async {
     await ref.read(hubClientProvider).markAllRead(arg, kind: kind);
-    state = AsyncData([for (final m in state.value ?? const <HubMessage>[]) (kind == null || m.kind == kind) ? m.copyWith(read: true) : m]);
+    state = AsyncData([for (final m in state.valueOrNull ?? const <HubMessage>[]) (kind == null || m.kind == kind) ? m.copyWith(read: true) : m]);
     ref.invalidate(unreadCountProvider(arg));
   }
 
   Future<void> delete(String id) async {
     await ref.read(hubClientProvider).deleteMessage(id);
-    state = AsyncData((state.value ?? const <HubMessage>[]).where((m) => m.id != id).toList());
+    state = AsyncData((state.valueOrNull ?? const <HubMessage>[]).where((m) => m.id != id).toList());
     ref.invalidate(unreadCountProvider(arg));
   }
 
@@ -175,7 +175,7 @@ final unreadCountProvider = FutureProvider.family<UnreadCount, String>((ref, hom
 final brandsProvider = FutureProvider<List<BrandInfo>>((ref) => ref.read(hubClientProvider).brands());
 
 final brandProvider = Provider.family<BrandInfo?, String>((ref, id) {
-  for (final b in ref.watch(brandsProvider).value ?? const <BrandInfo>[]) {
+  for (final b in ref.watch(brandsProvider).valueOrNull ?? const <BrandInfo>[]) {
     if (b.id == id) return b;
   }
   return null;

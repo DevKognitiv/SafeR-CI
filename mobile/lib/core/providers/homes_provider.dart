@@ -75,14 +75,14 @@ final currentHomeIdProvider = NotifierProvider<CurrentHomeIdNotifier, String?>(C
 /// The selected home (null while loading or when the user has none).
 final currentHomeProvider = Provider<Home?>((ref) {
   final id = ref.watch(currentHomeIdProvider);
-  final homes = ref.watch(homesProvider).value ?? const [];
+  final homes = ref.watch(homesProvider).valueOrNull ?? const [];
   if (homes.isEmpty) return null;
   return homes.firstWhere((h) => h.id == id, orElse: () => homes.first);
 });
 
 /// Rooms of a home (from the home payload; refreshed with homesProvider).
 final roomsProvider = Provider.family<List<Room>, String>((ref, homeId) {
-  final homes = ref.watch(homesProvider).value ?? const [];
+  final homes = ref.watch(homesProvider).valueOrNull ?? const [];
   for (final h in homes) {
     if (h.id == homeId) return h.rooms;
   }

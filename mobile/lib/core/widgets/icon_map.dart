@@ -6,6 +6,9 @@ IconData iconFromName(String? name, {IconData fallback = Icons.devices_other}) {
   return _icons[name] ?? fallback;
 }
 
+/// Names accepted by [iconFromName] (for icon pickers).
+List<String> get iconNames => _icons.keys.toList(growable: false);
+
 /// Default icon for a device category.
 IconData categoryIcon(String category) {
   switch (category) {
@@ -92,6 +95,13 @@ const Map<String, IconData> _icons = {
   'cloud': Icons.cloud,
   'cloud_queue': Icons.cloud_queue,
   'wb_sunny': Icons.wb_sunny,
+  'sunny': Icons.sunny,
+  'wb_cloudy': Icons.wb_cloudy,
+  'cloudy_snowing': Icons.cloudy_snowing,
+  'severe_cold': Icons.severe_cold,
+  'snowing': Icons.snowing,
+  'storm': Icons.storm,
+  'air': Icons.air,
   'nights_stay': Icons.nights_stay,
   'umbrella': Icons.umbrella,
   'thunderstorm': Icons.thunderstorm,

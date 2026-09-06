@@ -80,6 +80,7 @@ class DeviceService:
             state=dict(device.state or {}),
             capabilities=list(device.capabilities or []),
             name=device.name,
+            integration_id=device.integration_id,
         )
 
     async def ref_for(self, session: AsyncSession, device: Device) -> DeviceRef:

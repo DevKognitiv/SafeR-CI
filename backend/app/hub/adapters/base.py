@@ -140,6 +140,7 @@ class DeviceRef:
     state: Dict[str, Any] = field(default_factory=dict)
     capabilities: List[Dict[str, Any]] = field(default_factory=list)
     name: str = ""
+    integration_id: Optional[str] = None
 
     def cfg(self, key: str, default: Any = None) -> Any:
         """Config lookup: device config first, then integration config."""
@@ -156,6 +157,7 @@ class DeviceRef:
 
 EmitCallback = Callable[[str, str, Dict[str, Any]], Awaitable[None]]
 Unsubscribe = Callable[[], Awaitable[None]]
+CredentialsCallback = Callable[[str, Dict[str, Any]], Awaitable[None]]
 
 
 class AdapterContext:
@@ -168,10 +170,12 @@ class AdapterContext:
         emit: Optional[EmitCallback] = None,
         logger: Optional[logging.Logger] = None,
         timeout: float = 10.0,
+        update_credentials: Optional[CredentialsCallback] = None,
     ):
         self.settings = settings
         self.transport = transport
         self._emit = emit
+        self._update_credentials = update_credentials
         self.logger = logger or logging.getLogger("safer.hub.adapters")
         self.timeout = timeout
 
@@ -189,6 +193,19 @@ class AdapterContext:
         """
         if self._emit is not None:
             await self._emit(event_type, external_id, payload)
+
+    async def update_integration_credentials(self, integration_id: Optional[str], updates: Dict[str, Any]) -> None:
+        """Merge ``updates`` into an integration's stored credentials (rotated OAuth/session tokens).
+
+        Best-effort: a no-op without an integration id or without a persistence hook (unit tests);
+        persistence errors are logged, never raised into the adapter call.
+        """
+        if not integration_id or not updates or self._update_credentials is None:
+            return
+        try:
+            await self._update_credentials(integration_id, dict(updates))
+        except Exception:  # pylint: disable=broad-except
+            self.logger.exception("Could not persist credentials for integration %s", integration_id)
 
 
 class BrandAdapter:

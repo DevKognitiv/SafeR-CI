@@ -90,6 +90,23 @@ class HubClient {
     }
   }
 
+  /// Side-effect-free reachability check of an arbitrary hub URL (used by
+  /// "Tester la connexion" before the URL is saved). True when
+  /// `GET {baseUrl}/api/v1/hub/health` answers 200.
+  static Future<bool> probe(String baseUrl, {Duration timeout = const Duration(seconds: 6), Dio? dio}) async {
+    final base = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    if (base.isEmpty) return false;
+    final client = dio ?? Dio(BaseOptions(connectTimeout: timeout, receiveTimeout: timeout, responseType: ResponseType.json));
+    try {
+      final response = await client.get<dynamic>('$base${AppConfig.apiPrefix}/health');
+      return response.statusCode == 200;
+    } on DioException {
+      return false;
+    } on FormatException {
+      return false;
+    }
+  }
+
   // ------------------------------------------------------------------ auth
   Future<AuthResult> register({required String email, required String password, required String name, String? phone, String locale = 'fr'}) =>
       _run(() => _dio.post('/auth/register', data: {'email': email, 'password': password, 'name': name, 'phone': phone, 'locale': locale}),

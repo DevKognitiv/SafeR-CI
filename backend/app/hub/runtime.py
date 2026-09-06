@@ -46,12 +46,25 @@ class HubRuntime:
                 if device_service is not None:
                     await device_service.handle_push(brand_id, external_id, event_type, payload)
 
+            async def _update_credentials(integration_id: str, updates: Dict[str, Any]) -> None:
+                from app.hub.models import Integration  # pylint: disable=import-outside-toplevel
+
+                async with self.db.session() as session:
+                    integration = await session.get(Integration, integration_id)
+                    if integration is None:
+                        return
+                    merged = dict(self.vault.decrypt(integration.credentials_enc))
+                    merged.update(updates)
+                    integration.credentials_enc = self.vault.encrypt(merged)
+                    await session.commit()
+
             self._contexts[brand_id] = AdapterContext(
                 settings=self.settings,
                 transport=self.transport,
                 emit=_emit,
                 logger=logging.getLogger(f"safer.hub.adapters.{brand_id}"),
                 timeout=self.settings.HUB_HTTP_TIMEOUT,
+                update_credentials=_update_credentials,
             )
         return self._contexts[brand_id]
 
