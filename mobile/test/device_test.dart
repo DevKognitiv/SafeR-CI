@@ -243,7 +243,7 @@ void main() {
       expect(find.byType(ChoiceChip), findsNWidgets(3));
       expect(find.byType(Switch), findsOneWidget);
       expect(sliderIn(const Key('slider-level')), findsOneWidget);
-      expect(find.text('Raw status'), findsOneWidget);
+      expect(find.text('Status'), findsOneWidget); // raw_ prefix stripped from unknown codes
       expect(find.text('idle'), findsOneWidget);
 
       await tester.tap(find.text('Fort'));
@@ -345,10 +345,10 @@ void main() {
 
       await tester.tap(find.text('Icône'));
       await settle(tester);
-      await tester.tap(find.bySemanticsLabel('router'));
+      await tester.tap(find.bySemanticsLabel('blinds'));
       await settle(tester);
       devices = await r.client.devices(FakeHubClient.homeId);
-      expect(devices.firstWhere((d) => d.id == 'dev-light').icon, 'router');
+      expect(devices.firstWhere((d) => d.id == 'dev-light').icon, 'blinds');
       expect(find.text('Icône mise à jour'), findsOneWidget);
     });
 

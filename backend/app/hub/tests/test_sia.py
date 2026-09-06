@@ -330,29 +330,33 @@ async def test_port_defaults_from_settings():
 
 
 # ----------------------------------------------------------------------------- end to end (real DeviceService)
-async def test_receiver_updates_paired_panel_through_device_service(client, auth, home):
-    from app.hub.runtime import get_runtime  # pylint: disable=import-outside-toplevel
-    from app.hub.tests.conftest import PREFIX  # pylint: disable=import-outside-toplevel
+async def test_receiver_updates_paired_panel_through_device_service(hub_app, client, auth, home):
+    """Pair a SIA panel through the adapter + DeviceService, then feed frames and read the persisted state back."""
+    from sqlalchemy import select  # pylint: disable=import-outside-toplevel
 
-    response = await client.post(
-        f"{PREFIX}/onboarding/ajax/pair",
-        json={"home_id": home["id"], "method": "sia_receiver", "payload": {"account": "1234", "name": "Centrale"}},
-        headers=auth["headers"],
-    )
-    assert response.status_code == 201, response.text
-    device = response.json()["devices"][0]
-    assert device["external_id"] == "sia:1234" and device["state"]["arm_mode"] == "disarmed"
+    from app.hub.adapters.base import AdapterContext  # pylint: disable=import-outside-toplevel
+    from app.hub.adapters.registry import registry  # pylint: disable=import-outside-toplevel
+    from app.hub.models import Device, DeviceEvent  # pylint: disable=import-outside-toplevel
 
-    receiver = SiaReceiver(get_runtime(), port=0)
+    runtime = hub_app.state.hub_runtime
+    devices_service = runtime.services["devices"]
+    adapter = registry.get("ajax")
+    result = await adapter.pair("sia_receiver", {"account": "1234", "name": "Centrale"}, AdapterContext(settings=runtime.settings))
+    async with runtime.db.session() as session:
+        devices, integration = await devices_service.materialize(session, home["id"], None, "ajax", result)
+        assert integration is None and len(devices) == 1
+        device_id = devices[0].id
+        assert devices[0].external_id == "sia:1234" and devices[0].state["arm_mode"] == "disarmed"
+
+    receiver = SiaReceiver(runtime, port=0)
     for seq, data in ((1, "#1234|Nri1/id4/CL04"), (2, "#1234|Nri1/BA02^Cuisine^"), (3, "#1234|Nri1/RP0000")):
         assert parse_frame(await receiver.handle_line(encode_frame("SIA-DCS", seq, 0, 0, "1234", data, STAMP))).msg_type == "ACK"
     assert parse_frame(await receiver.handle_line(encode_frame("ADM-CID", 4, 0, 0, "1234", "#1234|1401 01 004", STAMP))).msg_type == "ACK"
 
-    response = await client.get(f"{PREFIX}/devices/{device['id']}", headers=auth["headers"])
-    assert response.status_code == 200, response.text
-    state = response.json()["state"]
-    assert state["arm_mode"] == "disarmed" and state["alarm"] is False and state["triggered_zone"] == "Cuisine"
-    response = await client.get(f"{PREFIX}/devices/{device['id']}/events?limit=50", headers=auth["headers"])
-    assert response.status_code == 200, response.text
-    types = [e["type"] for e in response.json()]
+    async with runtime.db.session() as session:
+        device = await session.get(Device, device_id)
+        assert device is not None and device.online is True
+        assert device.state["arm_mode"] == "disarmed" and device.state["alarm"] is False and device.state["triggered_zone"] == "Cuisine"
+        types = [e.type for e in (await session.execute(select(DeviceEvent).where(DeviceEvent.device_id == device_id))).scalars()]
     assert "alarm" in types and "burglary" in types and "arm_mode" in types
+    assert receiver.stats["ack"] == 4 and receiver.stats["events"] == 3

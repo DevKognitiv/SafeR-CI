@@ -38,7 +38,7 @@ Future<void> _fillHikvision(WidgetTester tester, {String host = '192.168.1.64'})
 }
 
 Future<void> _tapButton(WidgetTester tester, String label) async {
-  final finder = find.widgetWithText(ButtonStyleButton, label);
+  final finder = find.ancestor(of: find.text(label), matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));
   await tester.ensureVisible(finder);
   await tester.pump();
   await tester.tap(finder);

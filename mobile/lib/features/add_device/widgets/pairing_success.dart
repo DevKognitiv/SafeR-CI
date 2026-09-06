@@ -105,9 +105,12 @@ class _PairedTile extends StatelessWidget {
       ),
       title: Text(device.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: device.online
-          ? StateChip(label: context.tr(fr: 'En ligne', en: 'Online'), color: SafeRColors.success, icon: Icons.wifi)
-          : StateChip(label: context.tr(fr: 'Hors ligne', en: 'Offline'), color: theme.colorScheme.onSurfaceVariant, icon: Icons.wifi_off),
+      trailing: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: device.online
+            ? StateChip(label: context.tr(fr: 'En ligne', en: 'Online'), color: SafeRColors.success, icon: Icons.wifi)
+            : StateChip(label: context.tr(fr: 'Hors ligne', en: 'Offline'), color: theme.colorScheme.onSurfaceVariant, icon: Icons.wifi_off),
+      ),
     );
   }
 }

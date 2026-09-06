@@ -94,8 +94,10 @@ class MethodCard extends StatelessWidget {
                         spacing: 6,
                         runSpacing: 4,
                         children: [
-                          if (method.supportsDiscovery) StateChip(label: context.tr(fr: 'Détection automatique', en: 'Auto discovery'), icon: Icons.radar, color: SafeRColors.success),
-                          if (method.requiresIntegration) StateChip(label: context.tr(fr: 'Compte requis', en: 'Account required'), icon: Icons.account_circle_outlined),
+                          if (method.supportsDiscovery)
+                            FittedBox(fit: BoxFit.scaleDown, child: StateChip(label: context.tr(fr: 'Détection automatique', en: 'Auto discovery'), icon: Icons.radar, color: SafeRColors.success)),
+                          if (method.requiresIntegration)
+                            FittedBox(fit: BoxFit.scaleDown, child: StateChip(label: context.tr(fr: 'Compte requis', en: 'Account required'), icon: Icons.account_circle_outlined)),
                         ],
                       ),
                     ],

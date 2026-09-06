@@ -58,7 +58,7 @@ class BrandCard extends StatelessWidget {
                       Wrap(
                         spacing: 6,
                         runSpacing: 4,
-                        children: [for (final protocol in brand.protocols) StateChip(label: protocol, color: color)],
+                        children: [for (final protocol in brand.protocols) FittedBox(fit: BoxFit.scaleDown, child: StateChip(label: protocol, color: color))],
                       ),
                     ],
                   ],
