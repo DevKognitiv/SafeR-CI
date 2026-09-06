@@ -16,8 +16,17 @@ class HomeFakeHubClient extends FakeHubClient {
   List<Room> rooms_ = List.of(FakeHubClient.demoRooms);
   final List<List<String>> reorders = [];
 
+  /// Number of device-list fetches (pull-to-refresh assertions).
+  int devicesCalls = 0;
+
   void _check() {
     if (failNetwork) throw ApiException('Impossible de joindre le hub', status: null);
+  }
+
+  @override
+  Future<List<Device>> devices(String homeId, {String? roomId, String? category, String? brand}) {
+    devicesCalls += 1;
+    return super.devices(homeId, roomId: roomId, category: category, brand: brand);
   }
 
   @override

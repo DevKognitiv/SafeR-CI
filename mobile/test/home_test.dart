@@ -122,6 +122,38 @@ void main() {
       expect(find.text('Appareil renommé'), findsOneWidget);
     });
 
+    testWidgets('long-press moves a device to another room', (tester) async {
+      await pumpAuthenticated(tester, const HomeScreen());
+      await tester.longPress(find.text('Prise TV'));
+      await settle(tester);
+      await tester.tap(find.text('Déplacer vers une pièce'));
+      await settle(tester);
+      // Room picker: the rooms and "Aucune pièce"; pick "Chambre" (the sheet's ListTile, not the tab pill).
+      expect(find.text('Aucune pièce'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ListTile, 'Chambre'));
+      await settle(tester);
+      expect(find.text('Appareil déplacé'), findsOneWidget);
+      await tester.tap(find.text('Chambre'));
+      await settle(tester);
+      expect(find.text('Prise TV'), findsOneWidget);
+      expect(find.text('Volet chambre'), findsOneWidget);
+      expect(find.byType(DeviceTile), findsNWidgets(2));
+    });
+
+    testWidgets('pull-to-refresh reloads the devices', (tester) async {
+      final client = HomeFakeHubClient();
+      await pumpAuthenticated(tester, const HomeScreen(), client: client);
+      final before = client.devicesCalls;
+      expect(before, greaterThanOrEqualTo(1));
+      await tester.fling(find.byType(CustomScrollView), const Offset(0, 300), 1000);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1)); // scroll animation
+      await tester.pump(const Duration(seconds: 1)); // indicator settle
+      await tester.pump(const Duration(seconds: 1)); // indicator hide
+      expect(client.devicesCalls, before + 1);
+      expect(find.text('Lampe salon'), findsOneWidget);
+    });
+
     testWidgets('does not show the offline banner when realtime is disabled', (tester) async {
       await pumpAuthenticated(tester, const HomeScreen());
       expect(find.byType(OfflineBanner), findsNothing);
