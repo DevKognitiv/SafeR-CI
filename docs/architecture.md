@@ -106,17 +106,24 @@ POST   /api/v1/users/register      Register new user
 POST   /api/v1/users/login         Authenticate user
 ```
 
-### Mobile App (Layer 4)
+### SafeR Hub (Layer 3, `backend/app/hub`)
 
-**Technology:** Flutter 3.x + Riverpod + GoRouter
+Multi-brand smart home & security hub mounted at `/api/v1/hub` (also runs standalone on a
+Raspberry Pi with SQLite). Brand adapters (Tuya cloud/local, Hikvision ISAPI + AX PRO, Dahua CGI,
+Ajax Enterprise API + SIA DC-09 receiver, Matter via python-matter-server, ONVIF, Home Assistant)
+normalise devices into one model; homes/rooms/members, scenes, automations, a software alarm
+panel, a message centre and a realtime WebSocket sit on top. See [safer-app.md](safer-app.md).
 
-**Screens:**
-- **SOS Screen** — Panic button + local emergency numbers (170, 180, 185)
-- **Map Screen** — Live incident map (flutter_map + OpenStreetMap)
-- **Alerts Screen** — Chronological alert feed for your area
-- **Report Screen** — Community incident reporting with photo
-- **Responder Screen** — For COGES/NGO agents: incident queue + assignment
-- **Profile Screen** — Settings, notification preferences, emergency contacts
+### SafeR App (Layer 4, `mobile/`)
+
+**Technology:** Flutter 3.x + Riverpod + go_router — Tuya-Smart-style UI, French-first.
+
+**Tabs & screens:**
+- **Home** — weather header, room tabs, device grid with quick toggles, add device (brand catalogue, category grid, QR scan for Matter/Tuya, dynamic pairing wizards)
+- **Device panels** — switch, light (brightness/colour), cover, thermostat, sensors, camera (live stream + PTZ + snapshot), lock, alarm panel (zones), gateway, generic
+- **Scenes** — tap-to-run scenes and automations (device/schedule/security triggers, conditions, actions)
+- **Security** — arm modes (disarmed/home/away/night), alarm banner, panels/zones/sensors, alarm history, **SOS screen** with local emergency numbers (170, 180, 185, 111)
+- **Me** — profile, home management, members, message centre, integrations, settings (language, theme, hub URL), about
 
 ---
 

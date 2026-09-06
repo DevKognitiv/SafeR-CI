@@ -10,13 +10,15 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.api.routes import incidents, alerts, users, health
 from app.core.config import settings
 from app.core.database import init_db
+from app.hub.app import attach as attach_hub, hub_lifespan
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle manager."""
     await init_db()
-    yield
+    async with hub_lifespan(app):
+        yield
 
 
 app = FastAPI(
@@ -43,3 +45,6 @@ app.include_router(health.router, tags=["health"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(incidents.router, prefix="/api/v1/incidents", tags=["incidents"])
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+
+# SafeR Hub — multi-brand smart home & security API used by the SafeR mobile app
+attach_hub(app, prefix="/api/v1/hub")
