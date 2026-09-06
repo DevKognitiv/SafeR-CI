@@ -12,6 +12,22 @@ and incident features. It ships in two parts that share one contract:
 The hub runs on the SafeR API server **or** on a Raspberry Pi next to Home Assistant
 (`uvicorn app.hub.app:app` with SQLite). The app only ever talks to the hub.
 
+## Screenshots
+
+Captured by the end-to-end harness (release web build against a real hub seeded with the demo brand).
+
+| Login | Home | Scenes | Security |
+| --- | --- | --- | --- |
+| ![Login](screenshots/login.png) | ![Home](screenshots/home.png) | ![Scenes](screenshots/scenes.png) | ![Security](screenshots/security.png) |
+
+| Light panel | Camera panel | Add device | Tuya pairing |
+| --- | --- | --- | --- |
+| ![Light](screenshots/device-light.png) | ![Camera](screenshots/device-camera.png) | ![Add device](screenshots/add-device.png) | ![Tuya](screenshots/pair-tuya.png) |
+
+| SOS | Me |
+| --- | --- |
+| ![SOS](screenshots/sos.png) | ![Me](screenshots/me.png) |
+
 ## Supported brands and protocols
 
 | Brand | Protocol(s) | Pairing methods | Devices |
