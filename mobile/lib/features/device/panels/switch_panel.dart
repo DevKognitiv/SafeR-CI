@@ -71,16 +71,13 @@ class SwitchPanel extends ConsumerWidget {
             child: Column(
               children: [
                 for (final gang in gangs)
-                  Semantics(
-                    label: capabilityLabel(context, gang),
-                    child: SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(capabilityLabel(context, gang)),
-                      subtitle: Text((device.boolValue(gang.code) ?? false) ? context.tr(fr: 'Allumé', en: 'On') : context.tr(fr: 'Éteint', en: 'Off'),
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      value: device.boolValue(gang.code) ?? false,
-                      onChanged: (v) => sendDeviceCommand(context, ref, device, gang.code, v),
-                    ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(capabilityLabel(context, gang)),
+                    subtitle: Text((device.boolValue(gang.code) ?? false) ? context.tr(fr: 'Allumé', en: 'On') : context.tr(fr: 'Éteint', en: 'Off'),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    value: device.boolValue(gang.code) ?? false,
+                    onChanged: device.online ? (v) => sendDeviceCommand(context, ref, device, gang.code, v) : null,
                   ),
               ],
             ),

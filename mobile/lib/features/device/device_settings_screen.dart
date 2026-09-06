@@ -103,12 +103,15 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
       destructive: true,
     );
     if (!confirmed || !mounted) return;
+    // The screen is rebuilt without its device once the list shrinks: capture what we need first.
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final removedMessage = context.tr(fr: 'Appareil supprimé', en: 'Device removed');
     setState(() => _busy = true);
     try {
       await _notifier.remove(device.id);
-      if (!mounted) return;
-      showSnack(context, context.tr(fr: 'Appareil supprimé', en: 'Device removed'));
-      context.go(Routes.home);
+      messenger.showSnackBar(SnackBar(content: Text(removedMessage)));
+      router.go(Routes.home);
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
