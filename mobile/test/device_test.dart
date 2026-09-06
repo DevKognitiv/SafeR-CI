@@ -342,6 +342,8 @@ void main() {
       expect(find.text('Chambre'), findsOneWidget);
       var devices = await r.client.devices(FakeHubClient.homeId);
       expect(devices.firstWhere((d) => d.id == 'dev-light').roomId, 'room-2');
+      await tester.pump(const Duration(seconds: 5)); // let the first snackbar expire
+      await settle(tester);
 
       await tester.tap(find.text('Icône'));
       await settle(tester);
