@@ -65,7 +65,7 @@ class SecurityHeroCard extends StatelessWidget {
                         ),
                         if (changed.isNotEmpty)
                           Text(
-                            context.tr(fr: 'Modifié $changed', en: 'Changed $changed').replaceFirst('Modifié Il y a', 'Modifié il y a'),
+                            context.tr(fr: 'Modifié · $changed', en: 'Changed · $changed'),
                             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                           ),
                       ],
