@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n.dart';
@@ -143,7 +141,7 @@ class _PulsePainter extends CustomPainter {
     }
     // Static halo so the button reads as "live" even between pulses.
     canvas.drawCircle(center, radius + 10, Paint()..color = color.withValues(alpha: 0.18));
-    canvas.drawCircle(center, radius + 4, Paint()..color = color.withValues(alpha: math.min(0.3, 0.3)));
+    canvas.drawCircle(center, radius + 4, Paint()..color = color.withValues(alpha: 0.3));
   }
 
   @override
