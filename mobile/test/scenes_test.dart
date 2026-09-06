@@ -4,6 +4,7 @@ import 'package:safer_ci/core/router.dart';
 import 'package:safer_ci/core/widgets/widgets.dart';
 import 'package:safer_ci/features/scenes/automation_editor_screen.dart';
 import 'package:safer_ci/features/scenes/scene_editor_screen.dart';
+import 'package:safer_ci/features/scenes/widgets/action_list.dart';
 import 'package:safer_ci/features/scenes/widgets/automation_card.dart';
 import 'package:safer_ci/features/scenes/widgets/scene_card.dart';
 
@@ -187,6 +188,47 @@ void main() {
       expect(scene.icon, 'movie');
       expect(scene.color, '#16A34A');
       expect(scene.actions.single.type, 'security_mode');
+    });
+
+    testWidgets('drags an action to reorder the list and saves the new order', (tester) async {
+      final app = await pumpScenes(tester, initialLocation: Routes.scene('scene-1'));
+      List<String> titles() => tester.widgetList<ActionTile>(find.byType(ActionTile)).map((t) => t.action.type).toList();
+      expect(titles(), ['device_command', 'security_mode']);
+
+      // The actions list is below the fold on a 400x800 viewport: scroll until the
+      // button under the list is built, so both rows are fully visible.
+      await tester.scrollUntilVisible(
+        find.text('Ajouter une action'),
+        150,
+        scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+      );
+      await settle(tester);
+      // Drag the first row's handle below the second row.
+      final handle = find.byIcon(Icons.drag_indicator).first;
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.up();
+      await settle(tester, frames: 20);
+      expect(titles(), ['security_mode', 'device_command']);
+
+      await tester.tap(find.text('Enregistrer'));
+      await settle(tester, frames: 20);
+      final scene = (await app.client.scenes(homeId)).firstWhere((s) => s.id == 'scene-1');
+      expect(scene.actions.map((a) => a.type), ['security_mode', 'device_command']);
+    });
+  });
+
+  group('reorderedList', () {
+    test('follows the ReorderableList contract (newIndex is the pre-removal slot)', () {
+      expect(reorderedList(['a', 'b', 'c'], 0, 3), ['b', 'c', 'a']); // first -> end
+      expect(reorderedList(['a', 'b', 'c'], 0, 2), ['b', 'a', 'c']); // first -> middle
+      expect(reorderedList(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']); // last -> first
+      expect(reorderedList(['a', 'b', 'c'], 1, 1), ['a', 'b', 'c']); // no-op
+      expect(reorderedList(<String>[], 0, 0), isEmpty);
     });
   });
 

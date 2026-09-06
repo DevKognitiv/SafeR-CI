@@ -52,13 +52,9 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
     _actions = List.of(automation.actions);
   }
 
-  void _close() {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('${Routes.scenes}?tab=automations');
-    }
-  }
+  /// Back to the automations list. `go` (not `pop`) so the list opens on the
+  /// "Automatiser" tab even when the editor was opened from a deep link.
+  void _close() => context.go('${Routes.scenes}?tab=automations');
 
   Future<void> _addTrigger(String homeId) async {
     final rule = await showTriggerPicker(context, homeId: homeId);
@@ -217,7 +213,7 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: _triggers.length > 1
+              child: _triggers.isNotEmpty
                   ? SegmentedButton<String>(
                       showSelectedIcon: false,
                       segments: [
@@ -254,11 +250,7 @@ class _AutomationEditorScreenState extends ConsumerState<AutomationEditorScreen>
             actions: _actions,
             devices: devices,
             scenes: scenes,
-            onReorder: (oldIndex, newIndex) => setState(() {
-              final list = List.of(_actions);
-              list.insert(newIndex, list.removeAt(oldIndex));
-              _actions = list;
-            }),
+            onReorder: (oldIndex, newIndex) => setState(() => _actions = reorderedList(_actions, oldIndex, newIndex)),
             onRemove: (index) => setState(() => _actions = [..._actions]..removeAt(index)),
           ),
           SliverToBoxAdapter(child: AddItemButton(label: context.tr(fr: 'Ajouter une action', en: 'Add an action'), onPressed: _busy ? null : () => _addAction(homeId))),

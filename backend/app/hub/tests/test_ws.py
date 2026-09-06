@@ -139,6 +139,10 @@ def test_ws_bad_client_frames_report_errors(tc, alice, home):
         assert error["type"] == "error" and "teleport" in error["detail"]
         ws.send_json({"type": "ping"})  # still alive
         assert ws.receive_json() == {"type": "pong"}
+        ws.send_bytes(b'{"type": "ping", "ts": 7}')  # binary JSON frames are accepted too
+        assert ws.receive_json() == {"type": "pong", "ts": 7}
+        ws.send_bytes(b"\xff\xfe")  # undecodable bytes -> error frame, connection stays up
+        assert ws.receive_json()["type"] == "error"
 
 
 # ----------------------------------------------------------------------------- event delivery

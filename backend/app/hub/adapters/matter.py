@@ -1001,7 +1001,7 @@ def build_operations(device: DeviceRef, code: str, value: Any) -> Tuple[List[Ope
         return [_device_command(node_id, endpoint_id, CL_COLOR, "MoveToColorTemperature", payload)], {"color_temp": kelvin, "work_mode": "white"}
     if code == "color":
         if not isinstance(value, dict):
-            raise AdapterError("color expects {h, s, v}", "invalid_input")
+            raise AdapterError("color expects an object with h, s and v", "invalid_input")
         hue = float(value.get("h", 0)) % 360
         sat = max(0.0, min(100.0, float(value.get("s", 100))))
         bright = value.get("v")

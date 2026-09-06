@@ -8,7 +8,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.hub.adapters.base import BrandInfo, DiscoveredDevice, StreamInfo  # noqa: F401  (re-exported)
+from app.hub.adapters.base import BrandInfo, DiscoveredDevice, StreamInfo  # noqa: F401  # pylint: disable=unused-import
 from app.hub.capabilities import CATEGORIES, SECURITY_MODES
 
 

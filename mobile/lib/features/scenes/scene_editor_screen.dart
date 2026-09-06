@@ -50,13 +50,9 @@ class _SceneEditorScreenState extends ConsumerState<SceneEditorScreen> {
     _actions = List.of(scene.actions);
   }
 
-  void _close() {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(Routes.scenes);
-    }
-  }
+  /// Back to the tap-to-run list. `go` (not `pop`) so the list is shown on the
+  /// right tab even when the editor was opened from a deep link.
+  void _close() => context.go(Routes.scenes);
 
   Future<void> _addAction(String homeId) async {
     final action = await showActionPicker(context, homeId: homeId, excludeSceneId: widget.sceneId);
@@ -64,12 +60,7 @@ class _SceneEditorScreenState extends ConsumerState<SceneEditorScreen> {
     setState(() => _actions = [..._actions, action]);
   }
 
-  void _reorder(int oldIndex, int newIndex) => setState(() {
-        final list = List.of(_actions);
-        final item = list.removeAt(oldIndex);
-        list.insert(newIndex, item);
-        _actions = list;
-      });
+  void _reorder(int oldIndex, int newIndex) => setState(() => _actions = reorderedList(_actions, oldIndex, newIndex));
 
   Future<void> _save(String homeId) async {
     final name = _name.text.trim();

@@ -374,8 +374,8 @@ async def test_pair_ip_camera_with_digest(adapter: HikvisionAdapter):
     codes = {c["code"] for c in cam.capabilities}
     assert {"stream_main", "stream_sub", "snapshot", "motion", "ptz", "siren"} <= codes
     assert "light" not in codes  # one IO output only -> siren, no light
-    assert cam.state["stream_main"] == f"rtsp://192.168.1.64:554/Streaming/Channels/101"
-    assert cam.state["stream_sub"] == f"rtsp://192.168.1.64:554/Streaming/Channels/102"
+    assert cam.state["stream_main"] == "rtsp://192.168.1.64:554/Streaming/Channels/101"
+    assert cam.state["stream_sub"] == "rtsp://192.168.1.64:554/Streaming/Channels/102"
     assert cam.state["snapshot"] == "http://192.168.1.64:80/ISAPI/Streaming/channels/101/picture"
     assert PASSWORD not in json.dumps(cam.state)
     # First request was challenged, the retry carried a valid Digest header (verified by FakeIsapi)

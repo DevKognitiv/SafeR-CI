@@ -28,6 +28,14 @@ class _ScenesScreenState extends ConsumerState<ScenesScreen> with SingleTickerPr
   late final TabController _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1));
 
   @override
+  void didUpdateWidget(covariant ScenesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // `/scenes?tab=automations` after an editor closes: follow the URL.
+    final tab = widget.initialTab.clamp(0, 1);
+    if (tab != oldWidget.initialTab.clamp(0, 1) && tab != _tabs.index) _tabs.animateTo(tab);
+  }
+
+  @override
   void dispose() {
     _tabs.dispose();
     super.dispose();

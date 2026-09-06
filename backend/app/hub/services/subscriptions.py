@@ -71,6 +71,11 @@ class SubscriptionManager:
         """Live subscription of a brand (or None)."""
         return self._subscriptions.get(brand)
 
+    @property
+    def resync_pending(self) -> bool:
+        """True while a debounced resync is scheduled or running (tests wait on it to settle)."""
+        return self._resync_task is not None and not self._resync_task.done()
+
     async def _refs_for(self, brand: str) -> List[DeviceRef]:
         service = self._service()
         async with self.runtime.db.session() as session:

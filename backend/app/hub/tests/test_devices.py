@@ -535,6 +535,7 @@ async def test_subscription_manager_lifecycle(client, auth, home, hub_app, fake_
     # A new device of the brand -> device.added -> debounced resubscribe with both devices
     await materialize(hub_app, home["id"], "fakepush", PairResult(devices=[draft("push-b")]))
     await wait_until(lambda: len(push.subscriptions) == 2)
+    await wait_until(lambda: not manager.resync_pending)  # let the resync finish iterating the other brands
     assert push.unsubscribed == 1
     assert sorted(ref.external_id for ref in push.subscriptions[1]) == ["push-a", "push-b"]
 
@@ -547,6 +548,7 @@ async def test_subscription_manager_lifecycle(client, auth, home, hub_app, fake_
     # Removing a device -> device.removed -> resubscribe with the remaining one
     assert (await client.delete(f"{PREFIX}/devices/{first['id']}", headers=auth["headers"])).status_code == 204
     await wait_until(lambda: len(push.subscriptions) == 3)
+    await wait_until(lambda: not manager.resync_pending)
     assert push.unsubscribed == 2
     assert [ref.external_id for ref in push.subscriptions[2]] == ["push-b"]
 

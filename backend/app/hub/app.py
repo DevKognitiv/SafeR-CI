@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.hub import __version__
-from app.hub import adapters  # noqa: F401  pylint: disable=unused-import  (registers adapters)
+# Importing the package registers every brand adapter on the registry.
+from app.hub import adapters  # noqa: F401  # pylint: disable=unused-import
 from app.hub.adapters.base import AdapterError
 from app.hub.runtime import HubRuntime, get_runtime, set_runtime
 from app.hub.settings import HubSettings

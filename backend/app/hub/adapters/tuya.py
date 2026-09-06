@@ -261,7 +261,7 @@ def _decode_colour(value: Any, meta: Dict[str, Any], code: str) -> Any:
 
 def _encode_colour(value: Any, meta: Dict[str, Any], code: str) -> str:
     if not isinstance(value, dict):
-        raise AdapterError("color expects {h, s, v}", "invalid_input")
+        raise AdapterError("color expects an object with h, s and v", "invalid_input")
     scale = _colour_scale(meta, code)
     return json.dumps({
         "h": _round_half_up(float(_num(value.get("h"), 0.0) or 0.0) % 360),
@@ -682,7 +682,7 @@ def local_dps_map(category: str, dps: Optional[Dict[str, Any]] = None, override:
         try:
             override = json.loads(override)
         except ValueError as exc:
-            raise AdapterError("dps_map must be a JSON object {dps: code}", "invalid_input") from exc
+            raise AdapterError("dps_map must be a JSON object mapping dps numbers to codes", "invalid_input") from exc
     if isinstance(override, dict):
         table.update({str(k): str(v) for k, v in override.items()})
     if category == "switch" and dps:

@@ -127,6 +127,21 @@ async def _reject(websocket: WebSocket, code: int, reason: str) -> None:
         pass
 
 
+async def _receive_frame(websocket: WebSocket) -> str:
+    """Next client frame as text (binary frames are decoded as UTF-8); raises ``WebSocketDisconnect``.
+
+    ``WebSocket.receive_text`` raises ``KeyError`` on a binary frame under uvicorn; mobile WebSocket
+    libraries occasionally send JSON as binary, so both frame types are accepted here.
+    """
+    message = await websocket.receive()
+    if message["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+    text = message.get("text")
+    if text is not None:
+        return text
+    return (message.get("bytes") or b"").decode("utf-8", errors="replace")
+
+
 async def _handle_client_message(runtime: HubRuntime, connection: Connection, raw: str) -> None:
     """Dispatch one client frame (ping / subscribe); errors are reported as ``{"type": "error"}`` frames."""
     try:
@@ -184,7 +199,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     logger.info("ws: %s connected (home=%s)", user.id, home_id or "*")
     try:
         while True:
-            raw = await websocket.receive_text()
+            raw = await _receive_frame(websocket)
             await _handle_client_message(runtime, connection, raw)
     except WebSocketDisconnect as exc:
         logger.info("ws: %s disconnected (code=%s, sent=%d, dropped=%d)", user.id, exc.code, connection.sent, connection.dropped)

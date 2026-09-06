@@ -5,7 +5,6 @@ import os
 from typing import AsyncIterator, Dict
 
 import httpx
-import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
