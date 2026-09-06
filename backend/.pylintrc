@@ -1,13 +1,14 @@
 # Pylint configuration for the SafeR Hub package (backend/app/hub).
-# CI runs: pylint --rcfile=.pylintrc app/hub --fail-under=9.0
+# Run:  pylint --rcfile=backend/.pylintrc backend/app/hub        (CI gate: --fail-under=9.0)
 [MASTER]
 jobs=0
-py-version=3.11
+py-version=3.10
 extension-pkg-allow-list=pydantic
+ignore=__pycache__
 
 [MESSAGES CONTROL]
 disable=
-    # Style/complexity checks that do not fit an adapter-heavy codebase
+    # Style/complexity checks that do not fit an adapter-heavy protocol codebase
     too-few-public-methods,
     too-many-arguments,
     too-many-positional-arguments,
@@ -22,20 +23,21 @@ disable=
     too-many-boolean-expressions,
     duplicate-code,
     fixme,
-    line-too-long,
-    # Late imports are used on purpose to avoid import cycles (runtime <-> services)
+    # Late imports are used on purpose to avoid import cycles (runtime <-> services <-> routes)
     import-outside-toplevel,
-    # Broad handlers are always logged; adapters must never crash the hub
+    # Broad handlers are always logged; adapters/background services must never crash the hub
     broad-exception-caught,
+    # `except CancelledError: raise` before a logged broad handler is deliberate
+    try-except-raise,
     # pytest fixtures are re-bound as test parameters by design
     redefined-outer-name,
-    # Tests reach into adapters/services on purpose
+    # Tests reach into adapters/services on purpose; FastAPI deps/adapter hooks have unused params
     protected-access,
     unused-argument
 
 [BASIC]
 good-names=i,j,k,e,x,y,n,db,id,ok,ws,tc,fd,dp,hs,_
-# Test functions/classes and private helpers do not need docstrings
+# Test functions/classes, fixtures and private helpers do not need docstrings
 no-docstring-rgx=^(_|test_|Test|conftest)
 
 [FORMAT]

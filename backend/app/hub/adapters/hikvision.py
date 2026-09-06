@@ -1076,7 +1076,7 @@ class HikvisionAdapter(BrandAdapter):
             for sub in subsystems:
                 api.check_control(await api.request("PUT", f"{PATH_CP_CONTROL}/arm/{sub}", params={"ways": ways}), "arm")
             return {"arm_mode": mode}
-        if code in ("alarm", "clear_alarm") and not _as_bool(value):
+        if code == "clear_alarm" or (code == "alarm" and not _as_bool(value)):
             for sub in subsystems:
                 api.check_control(await api.request("PUT", f"{PATH_CP_CONTROL}/clearAlarm/{sub}"), "clearAlarm")
             return {"alarm": False, "triggered_zone": ""}
