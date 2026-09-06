@@ -9,6 +9,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from sqlalchemy import select
 
 from app.hub import events as ev
 from app.hub.adapters.base import (
