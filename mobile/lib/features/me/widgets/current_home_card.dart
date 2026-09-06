@@ -91,6 +91,53 @@ class CurrentHomeCard extends StatelessWidget {
   }
 }
 
+/// Compact card shown on the Me tab when the user has no home yet.
+class NoHomeCard extends StatelessWidget {
+  const NoHomeCard({super.key, required this.onCreate});
+
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const IconBox(icon: Icons.home_work_outlined, size: 44),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(context.tr(fr: 'Aucune maison', en: 'No home yet'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(
+                        context.tr(fr: 'Créez une maison pour ajouter vos appareils.', en: 'Create a home to add your devices.'),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              onPressed: onCreate,
+              icon: const Icon(Icons.add),
+              label: Text(context.tr(fr: 'Créer une maison', en: 'Create a home')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Stat extends StatelessWidget {
   const _Stat({required this.icon, required this.label});
 
