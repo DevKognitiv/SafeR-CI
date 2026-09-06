@@ -115,7 +115,7 @@ def compare_values(op: str, actual: Any, expected: Any) -> bool:
         if op == "gte":
             return a_num >= e_num
         return a_num <= e_num
-    if a_num is not None and e_num is not None and not (isinstance(actual, bool) and isinstance(expected, str)):
+    if a_num is not None and e_num is not None:
         equal = a_num == e_num
     else:
         equal = _normalize(actual) == _normalize(expected)
