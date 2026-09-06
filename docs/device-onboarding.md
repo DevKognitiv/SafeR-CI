@@ -56,7 +56,7 @@ NVR/XVRs expose one camera child per channel.
 to integrators; contact your Ajax partner). Enter the API key, your Ajax account login and
 password. SafeR imports every hub as an `alarm_panel` and its devices as children (MotionProtect
 → motion sensor, DoorProtect → contact sensor, FireProtect → smoke/CO, LeaksProtect → water,
-sirens, sockets/relays as switches). Arm / night mode / disarm from the Security tab. Ajax event
+sirens, sockets/relays as switches). Arm / night mode / disarm from the Security tab (`armed_away` maps to a full ARM, `armed_home` and `armed_night` to Ajax **Night Mode**, i.e. partial arming). Ajax event
 pushes can be delivered to `POST /api/v1/hub/webhooks/ajax/{integration_id}?secret=…`
 (URL shown under Me → Intégrations).
 

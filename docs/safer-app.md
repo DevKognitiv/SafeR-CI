@@ -76,7 +76,7 @@ Canonical capability codes are defined once in `backend/app/hub/capabilities.py`
 | Security | `GET /homes/{id}/security`, `POST /homes/{id}/security/mode`, `POST /homes/{id}/security/alarm/clear`, `POST /homes/{id}/sos`, `GET /homes/{id}/sos` |
 | Messages | `GET /homes/{id}/messages`, `GET /homes/{id}/messages/unread-count`, `POST /messages/{id}/read`, `POST /homes/{id}/messages/read-all` |
 | Realtime | `WS /ws?token=&home_id=` — `device.state`, `device.event`, `device.added/removed`, `message.new`, `security.mode`, `security.alarm`, `scene.ran` |
-| Webhooks | `POST /webhooks/{brand}/{integration_id}?secret=` (Ajax cloud pushes, generic devices) |
+| Webhooks | `POST /webhooks/{brand}/{integration_id}?secret=` (brand pushes, e.g. Ajax cloud), `POST /webhooks/generic/{device_id}?secret=` (generic devices); secrets are read/rotated by admins via `GET|POST /integrations/{id}/webhook[/rotate]` and `GET|POST /devices/{id}/webhook[/rotate]` and never appear in device or integration JSON |
 
 Interactive docs: `http://localhost:8000/docs` when running the hub standalone.
 
