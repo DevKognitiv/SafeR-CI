@@ -130,7 +130,7 @@ class FakeTuyaCloud:
             if refresh not in self.refresh_tokens:
                 return httpx.Response(200, json={"success": False, "code": 1010, "msg": "token invalid"})
             return self._ok(self._issue())
-        if headers.get("access_token") not in self.valid_tokens:
+        if self.reject_business or headers.get("access_token") not in self.valid_tokens:
             return httpx.Response(200, json={"success": False, "code": 1010, "msg": "token invalid"})
         if path == "/v1.0/iot-01/associated-users/devices":
             if query.get("last_row_key") == "page2":
@@ -256,12 +256,15 @@ async def test_invalid_token_error_triggers_single_reauth(cloud: FakeTuyaCloud, 
     async with ctx.http(base_url=BASE) as client:
         api = TuyaCloudClient(client, ACCESS_ID, SECRET, token=TokenBundle("stale", "", expires_at=9e12))
         assert (await api.get_status(LIGHT["id"]))[2]["value"] == 505
-        assert api.token.access_token == "tok-1"
-        cloud.valid_tokens.clear()
-        cloud.fail_next = [{"code": 1010, "msg": "token invalid"}]
+        assert api.token.access_token == "tok-1"  # stale token rejected once -> new token -> retried transparently
+        assert [p for _, p, _ in cloud.requests] == ["/v1.0/devices/bf0light001/status", "/v1.0/token", "/v1.0/devices/bf0light001/status"]
+        cloud.reject_business = True
         with pytest.raises(AdapterError) as excinfo:
             await api.get_status(LIGHT["id"])
         assert excinfo.value.code == "auth_failed"
+        # exactly one re-authentication, no retry loop
+        assert [p for _, p, _ in cloud.requests][3:] == ["/v1.0/devices/bf0light001/status", "/v1.0/token", "/v1.0/devices/bf0light001/status"]
+        assert cloud.token_count == 2
 
 
 async def test_list_devices_pagination_and_uid(cloud: FakeTuyaCloud, ctx: AdapterContext):
