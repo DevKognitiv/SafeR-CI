@@ -24,6 +24,19 @@ import 'helpers/pump_app.dart';
 
 const homeId = FakeHubClient.homeId;
 
+/// Scroll the first Scrollable until [finder] is built, then bring it into the viewport.
+Future<void> scrollTo(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(finder, 200, scrollable: find.byType(Scrollable).first);
+  await tester.ensureVisible(finder);
+  await settle(tester);
+}
+
+/// SnackBars are shown one after the other: clear the queue between two assertions.
+Future<void> clearSnacks(WidgetTester tester) async {
+  tester.state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger)).clearSnackBars();
+  await settle(tester);
+}
+
 void main() {
   group('MeScreen', () {
     testWidgets('shows the user, the unread badge and the current home', (tester) async {
@@ -50,7 +63,8 @@ void main() {
       await settle(tester);
       expect(find.byType(HomeManagementScreen), findsOneWidget);
       await tester.tap(find.byType(BackButton));
-      await settle(tester);
+      await settle(tester, frames: 30);
+      expect(find.byType(HomeManagementScreen), findsNothing);
       await tester.tap(find.text('Alice Kouassi'));
       await settle(tester);
       expect(find.byType(ProfileScreen), findsOneWidget);
