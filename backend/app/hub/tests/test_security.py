@@ -365,8 +365,6 @@ async def incidents():
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
-        if request.headers.get("X-Fail") == "1":
-            return httpx.Response(500, json={"detail": "boom"})
         return httpx.Response(201, json={"id": "inc-123", "status": "open", "severity": "critical"})
 
     app = create_app(
@@ -435,37 +433,37 @@ async def test_sos_location_falls_back_to_home_then_abidjan(incidents):
 
 
 async def test_sos_forward_failure_is_not_fatal(incidents):
+    """HTTP errors and network failures on the incident platform never fail the SOS."""
     http, auth, home, calls = (incidents[k] for k in ("client", "auth", "home", "calls"))
-    response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={}, headers={**auth["headers"], "X-Fail": "1"})
-    # The hub does not forward client headers, so flip the mock by patching the settings-driven request instead
-    assert response.status_code == 201
     runtime = incidents["app"].state.hub_runtime
-    runtime.settings.SAFER_INCIDENTS_URL = "https://api.test/incidents/fail"
-    calls.clear()
+
+    def swap_transport(handler) -> None:
+        runtime.transport = httpx.MockTransport(handler)
+        runtime._contexts.clear()  # pylint: disable=protected-access  # contexts cache the transport
 
     def failing(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         return httpx.Response(500, json={"detail": "boom"})
 
-    runtime.transport = httpx.MockTransport(failing)
-    runtime._contexts.clear()  # pylint: disable=protected-access
+    swap_transport(failing)
     response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={"note": "test"}, headers=auth["headers"])
     assert response.status_code == 201, response.text
     assert response.json()["forwarded"] is False and response.json()["incident_id"] is None
     assert len(calls) == 1
-    # Network errors are swallowed as well
-    calls.clear()
 
     def exploding(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
         raise httpx.ConnectError("no route to host", request=request)
 
-    runtime.transport = httpx.MockTransport(exploding)
-    runtime._contexts.clear()  # pylint: disable=protected-access
+    swap_transport(exploding)
     response = await http.post(f"{PREFIX}/homes/{home['id']}/sos", json={}, headers=auth["headers"])
     assert response.status_code == 201 and response.json()["forwarded"] is False
-    # Both alerts were stored regardless
+    assert len(calls) == 2
+    # Both alerts were stored regardless, and the alarm message was posted each time
     listed = (await http.get(f"{PREFIX}/homes/{home['id']}/sos", headers=auth["headers"])).json()
-    assert len(listed) == 3
+    assert len(listed) == 2 and all(s["forwarded"] is False for s in listed)
+    alarms = (await http.get(f"{PREFIX}/homes/{home['id']}/messages", params={"kind": "alarm"}, headers=auth["headers"])).json()
+    assert [m["title"] for m in alarms] == ["🆘 SOS déclenché", "🆘 SOS déclenché"]
 
 
 async def test_sos_without_incidents_url_is_not_forwarded(client, auth, home, hub_app):
