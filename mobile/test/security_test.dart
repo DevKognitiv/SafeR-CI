@@ -79,15 +79,16 @@ void main() {
       expect(find.text('Présent'), findsOneWidget);
       expect(find.text('Absent'), findsOneWidget);
       expect(find.text('Nuit'), findsOneWidget);
-      // Disarmed: the hero title and the selected button both say "Désarmé".
-      expect(find.text('Désarmé'), findsNWidgets(2));
+      // Disarmed: the hero title, the selected button (and the panel's arm chip) say "Désarmé".
+      expect(find.text('Désarmé'), findsAtLeastNWidgets(2));
       expect(find.byKey(const Key('security-current-mode')), findsOneWidget);
       expect(find.byType(SecurityAlarmBanner), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('arm-mode-armed_away')));
       await settle(tester);
       expect(r.client.securityMode, 'armed_away');
-      expect(find.text('Absent'), findsNWidgets(2));
+      expect(find.text('Absent'), findsAtLeastNWidgets(2));
+      expect(find.text('Désarmé'), findsAtMostNWidgets(2));
       expect(find.text('Mode « Absent » activé'), findsOneWidget);
       expect(r.container.read(currentHomeProvider)?.securityMode, 'armed_away');
     });
@@ -256,6 +257,8 @@ void main() {
       final r = await pumpSecurity(tester, const SosScreen(), initialLocation: '/security/sos', client: SecurityFakeHubClient(seededAlerts: [seeded]));
       expect(find.byType(SosAlertTile), findsOneWidget);
       expect(find.text('Ouverte'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Marquer résolu'), 200, scrollable: find.byType(Scrollable).first);
+      await settle(tester);
       await tester.tap(find.text('Marquer résolu'));
       await settle(tester);
       expect(r.client.updateSosCalls, [(id: 'sos-old', status: 'resolved')]);
