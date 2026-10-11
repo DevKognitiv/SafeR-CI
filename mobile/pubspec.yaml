@@ -21,8 +21,9 @@ dependencies:
   dio: ^5.7.0
   web_socket_channel: ^3.0.1
 
-  # Local storage
+  # Local storage (secrets in the platform keystore, preferences in SharedPreferences)
   shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.4
 
   # Device onboarding (QR codes for Matter / Tuya)
   mobile_scanner: ^6.0.2
