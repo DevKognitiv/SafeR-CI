@@ -5,16 +5,18 @@ on:
     paths:
       - "backend/**"
       - "mobile/**"
+      - "tool/ci/**"
       - ".github/workflows/safer-hub-ci.yml"
   pull_request:
     paths:
       - "backend/**"
       - "mobile/**"
+      - "tool/ci/**"
       - ".github/workflows/safer-hub-ci.yml"
 
 jobs:
   hub-backend:
-    name: Hub backend (pytest + pylint)
+    name: Hub backend (pytest + pylint + migrations)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +42,15 @@ jobs:
           SECRET_KEY: ci-secret
       - name: Pylint (hub package)
         run: pylint --rcfile=.pylintrc app/hub --fail-under=9.0
+      - name: Alembic upgrade, downgrade and re-upgrade on a fresh SQLite database
+        run: |
+          rm -f /tmp/safer_hub_ci.db
+          python -m alembic -c alembic.ini -x url=sqlite:////tmp/safer_hub_ci.db upgrade head
+          python -m alembic -c alembic.ini -x url=sqlite:////tmp/safer_hub_ci.db current
+          python -m alembic -c alembic.ini -x url=sqlite:////tmp/safer_hub_ci.db downgrade -1
+          python -m alembic -c alembic.ini -x url=sqlite:////tmp/safer_hub_ci.db upgrade head
+        env:
+          SECRET_KEY: ci-secret
 
   mobile:
     name: SafeR app (analyze + test + web build)
@@ -62,3 +73,110 @@ jobs:
         run: flutter test
       - name: Build web
         run: flutter build web --release --dart-define=SAFER_HUB_URL=https://api.safer-ci.app
+
+  mobile-android:
+    name: SafeR app (Android bundle size + 16 KB alignment)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.2"
+          cache: true
+      - name: Dependencies
+        run: flutter pub get
+      - name: Build release bundle (debug signing)
+        run: flutter build appbundle --release --dart-define=SAFER_HUB_URL=https://api.safer-ci.app
+      - name: Bundle size, asset budgets and 16 KB ELF alignment
+        run: >
+          python3 ../tool/ci/aab_check.py build/app/outputs/bundle/release/app-release.aab
+          --budget ../tool/ci/size_budget.json --report ../aab-report.md
+      - name: Publish the bundle report to the job summary
+        if: always()
+        run: cat ../aab-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aab-report
+          path: aab-report.md
+          retention-days: 30
+          if-no-files-found: ignore
+
+  mobile-testlab:
+    name: SafeR app (Firebase Test Lab robo smoke, needs credentials)
+    runs-on: ubuntu-latest
+    needs: mobile
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Test Lab credentials
+        id: gate
+        env:
+          SA_KEY: ${{ secrets.FIREBASE_TEST_LAB_SA }}
+          PROJECT: ${{ secrets.FIREBASE_PROJECT_ID }}
+          BUCKET: ${{ secrets.FIREBASE_RESULTS_BUCKET }}
+        run: |
+          if [ -z "$SA_KEY" ] || [ -z "$PROJECT" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Firebase Test Lab skipped::FIREBASE_TEST_LAB_SA / FIREBASE_PROJECT_ID secrets are not configured (see docs/qa/device-capture.md §4)"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$BUCKET" ]; then echo "bucket=true" >> "$GITHUB_OUTPUT"; else echo "bucket=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-java@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          channel: stable
+          flutter-version: "3.47.2"
+          cache: true
+      - name: Build debug APK in demo mode
+        if: steps.gate.outputs.enabled == 'true'
+        run: flutter pub get && flutter build apk --debug --dart-define=SAFER_DEMO=1
+      - uses: google-github-actions/auth@v2
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          credentials_json: ${{ secrets.FIREBASE_TEST_LAB_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.gate.outputs.enabled == 'true'
+      - name: Robo smoke run (Android 10 and 14 images, French locale)
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          PROJECT: ${{ secrets.FIREBASE_PROJECT_ID }}
+          BUCKET: ${{ secrets.FIREBASE_RESULTS_BUCKET }}
+        run: |
+          gcloud config set project "$PROJECT"
+          EXTRA=()
+          if [ -n "$BUCKET" ]; then EXTRA+=(--results-bucket "$BUCKET"); fi
+          gcloud firebase test android run --type robo \
+            --app build/app/outputs/flutter-apk/app-debug.apk \
+            --device model=MediumPhone.arm,version=29,locale=fr,orientation=portrait \
+            --device model=MediumPhone.arm,version=34,locale=fr,orientation=portrait \
+            --timeout 5m --results-dir "safer-${{ github.sha }}" --results-history-name safer-smoke \
+            "${EXTRA[@]}"
+      - name: Download Test Lab artifacts
+        if: steps.gate.outputs.enabled == 'true' && steps.gate.outputs.bucket == 'true'
+        env:
+          BUCKET: ${{ secrets.FIREBASE_RESULTS_BUCKET }}
+        run: gcloud storage cp -r "${BUCKET%/}/safer-${{ github.sha }}" ../testlab-artifacts || true
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.enabled == 'true' && steps.gate.outputs.bucket == 'true'
+        with:
+          name: testlab-artifacts
+          path: testlab-artifacts
+          retention-days: 14
+          if-no-files-found: ignore
