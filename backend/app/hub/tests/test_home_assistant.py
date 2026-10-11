@@ -717,7 +717,11 @@ async def test_member_stream_never_exposes_the_long_lived_token():
             response = await http.get(f"{PREFIX}/devices/{camera['id']}/stream", headers=member_h)
             assert response.status_code == 200, response.text
             assert TOKEN not in response.text
-            assert response.json()["url"] == f"{URL}/api/camera_proxy_stream/camera.entree?token=abc123"
+            # The per-camera proxy token is a credential too: it stays in the hub unless the owner opts in.
+            body = response.json()
+            assert body["url"] == f"{URL}/api/camera_proxy_stream/camera.entree"
+            assert "abc123" not in response.text
+            assert body["auth_required"] is True and body["credentials_included"] is False
             assert TOKEN not in (await http.get(f"{PREFIX}/devices/{camera['id']}", headers=member_h)).text
     finally:
         await runtime.stop()
