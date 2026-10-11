@@ -39,6 +39,16 @@ class HubClient {
 
   static bool _carriesPassword(RequestOptions options) => options.path == '/auth/login' || options.path == '/auth/register';
 
+  /// The bearer header for requests that bypass [Dio] (snapshot images, players), under the
+  /// same guard as the interceptor: empty when there is no token or when the base URL is an
+  /// insecure public host, so the token never leaves the app in cleartext that way either.
+  Map<String, String> authHeaders() {
+    final token = _tokenProvider();
+    if (token == null || token.isEmpty) return const {};
+    if (HubUrlPolicy.check(_baseUrl) == HubUrlVerdict.insecurePublic) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
+
   final Dio _dio;
   final TokenProvider _tokenProvider;
   late String _baseUrl;

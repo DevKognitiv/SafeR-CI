@@ -63,11 +63,18 @@ class AuthValidators {
 
   /// Hub base URL: `http(s)://host[:port]`, and plain http only on the local
   /// network (see [HubUrlPolicy]).
-  static String? hubUrl(BuildContext context, String? value) {
+  static String? hubUrl(BuildContext context, String? value, {bool? cleartextToRawIpBlocked}) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return context.tr(fr: "Saisissez l'URL du hub", en: 'Enter the hub URL');
     switch (HubUrlPolicy.check(v)) {
       case HubUrlVerdict.ok:
+        final blocked = cleartextToRawIpBlocked ?? HubUrlPolicy.cleartextToRawIpBlockedByPlatform;
+        if (blocked && HubUrlPolicy.isCleartextRawIp(v)) {
+          return context.tr(
+            fr: 'Sur Android, un hub en http doit être nommé safer-hub.local (ou passer en https)',
+            en: 'On Android an http hub must be reached as safer-hub.local (or over https)',
+          );
+        }
         return null;
       case HubUrlVerdict.insecurePublic:
         return context.tr(
@@ -75,7 +82,7 @@ class AuthValidators {
           en: 'Use https:// for a public hub (http only on the local network)',
         );
       case HubUrlVerdict.invalid:
-        return context.tr(fr: 'URL invalide (ex. http://192.168.1.20:8000)', en: 'Invalid URL (e.g. http://192.168.1.20:8000)');
+        return context.tr(fr: 'URL invalide (ex. http://safer-hub.local:8000)', en: 'Invalid URL (e.g. http://safer-hub.local:8000)');
     }
   }
 

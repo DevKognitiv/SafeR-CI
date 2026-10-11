@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -63,10 +62,9 @@ class AppStorage {
     try {
       token = await store.read(key: tokenKey);
       hubUrl = await store.read(key: hubUrlKey);
-    } on PlatformException catch (e) {
-      available = false;
-      _warnOnce(e);
-    } on MissingPluginException catch (e) {
+    } catch (e) {
+      // PlatformException, MissingPluginException, or a JS error from the web plugin on an
+      // insecure origin: whatever the plugin throws, the session degrades to memory.
       available = false;
       _warnOnce(e);
     }
@@ -129,17 +127,17 @@ class AppStorage {
   Future<void> _writeSecure(String key, String? value) async {
     // Belt and braces: a secret never stays in plain preferences.
     if (_prefs.containsKey(key)) await _prefs.remove(key);
-    if (!_secureAvailable) return;
+    // Every call reaches the plugin, even after an earlier failure: a transient keystore error
+    // must not turn a later logout into a no-op that leaves the token persisted on the device.
+    // `_secureAvailable` only reports the degraded state (and warns once).
     try {
       if (value == null) {
         await _secure.delete(key: key);
       } else {
         await _secure.write(key: key, value: value);
       }
-    } on PlatformException catch (e) {
-      _secureAvailable = false;
-      _warnOnce(e);
-    } on MissingPluginException catch (e) {
+      _secureAvailable = true;
+    } catch (e) {
       _secureAvailable = false;
       _warnOnce(e);
     }

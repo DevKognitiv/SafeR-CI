@@ -46,8 +46,8 @@ class StreamPlayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final client = ref.watch(hubClientProvider);
-    final token = ref.watch(tokenProvider);
-    final headers = <String, String>{if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token'};
+    ref.watch(tokenProvider); // rebuild when the session changes: the headers below read it
+    final headers = client.authHeaders();
     final snapshotUrl = client.snapshotUrl(device.id);
     final builder = ref.watch(cameraSurfaceBuilderProvider);
     final key = (deviceId: device.id, quality: quality);

@@ -4,6 +4,65 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:safer_ci/core/storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// In-memory secure store whose next write can be made to fail once (a transient keystore
+/// error), or whose every call throws a non-platform error (the web plugin on an insecure origin).
+class _FlakySecureStorage extends FlutterSecureStorage {
+  _FlakySecureStorage({this.throwAlways = false});
+
+  final Map<String, String> values = {};
+  final bool throwAlways;
+  bool failNextWrite = false;
+  int deleteCalls = 0;
+
+  @override
+  Future<String?> read({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    if (throwAlways) throw StateError('crypto.subtle is undefined');
+    return values[key];
+  }
+
+  @override
+  Future<void> write({
+    required String key,
+    required String? value,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    if (throwAlways) throw StateError('crypto.subtle is undefined');
+    if (failNextWrite) {
+      failNextWrite = false;
+      throw PlatformException(code: 'keystore', message: 'AEADBadTagException');
+    }
+    values[key] = value ?? '';
+  }
+
+  @override
+  Future<void> delete({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    deleteCalls++;
+    if (throwAlways) throw StateError('crypto.subtle is undefined');
+    values.remove(key);
+  }
+}
+
 /// Secure store whose platform plugin fails (unsupported platform, broken keystore).
 /// With [failReads] false, reads answer "nothing stored" and only writes fail.
 class _BrokenSecureStorage extends FlutterSecureStorage {
@@ -166,6 +225,37 @@ void main() {
 
       await storage.clearSession();
       expect(storage.token, isNull);
+    });
+
+    test('a transient write failure never disables the later writes and deletes', () async {
+      SharedPreferences.setMockInitialValues({});
+      final plugin = _FlakySecureStorage();
+      final storage = await AppStorage.create(secure: plugin);
+      await storage.setToken('jwt-secret');
+      expect(plugin.values[AppStorage.tokenKey], 'jwt-secret');
+      plugin.failNextWrite = true;
+      await storage.setHubUrl('https://hub.example.com');
+      expect(storage.secureStorageAvailable, isFalse);
+      expect(storage.hubUrl, 'https://hub.example.com'); // kept in memory for the session
+      // Logging out after the hiccup still deletes the persisted token: the next launch must not restore it.
+      await storage.clearSession();
+      expect(plugin.deleteCalls, 1);
+      expect(plugin.values.containsKey(AppStorage.tokenKey), isFalse);
+      expect(storage.secureStorageAvailable, isTrue);
+      final relaunch = await AppStorage.create(secure: plugin);
+      expect(relaunch.token, isNull);
+    });
+
+    test('any plugin error, not only a platform exception, falls back to memory', () async {
+      SharedPreferences.setMockInitialValues({AppStorage.tokenKey: 'legacy-token'});
+      final storage = await AppStorage.create(secure: _FlakySecureStorage(throwAlways: true));
+      expect(storage.secureStorageAvailable, isFalse);
+      expect(storage.token, 'legacy-token');
+      await storage.setToken('jwt-secret'); // must not throw
+      expect(storage.token, 'jwt-secret');
+      await storage.clearSession();
+      expect(storage.token, isNull);
+      expect((await prefsDump()).values, isNot(contains('jwt-secret')));
     });
 
     test('a write failure after startup also falls back to memory', () async {

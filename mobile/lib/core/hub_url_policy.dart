@@ -11,6 +11,8 @@
 library;
 
 /// Result of [HubUrlPolicy.check].
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
+
 enum HubUrlVerdict {
   /// Usable as a hub base URL.
   ok,
@@ -35,6 +37,31 @@ const String kInsecureHubUrlMessageEn = 'Insecure connection refused: use https'
 
 /// Decides whether a hub URL may be used, and over which transport.
 class HubUrlPolicy {
+  /// True when the platform itself refuses cleartext to a raw IP address: Android release and
+  /// profile builds carry a network security config that allows `http://` only for localhost,
+  /// the emulator host and `*.local` names (debug builds have a permissive overlay). Android
+  /// cannot express RFC 1918 ranges in that file, so a LAN hub on a raw IP must be reached by
+  /// its `.local` name or over https in those builds.
+  static bool get cleartextToRawIpBlockedByPlatform =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android && !kDebugMode;
+
+  /// `http://` to an IP literal the Android config does not list (anything but loopback and
+  /// the emulator host). Such a URL passes [check] (no secret is at risk on a private network)
+  /// but cannot connect in a release build; the validators explain that instead of letting the
+  /// user discover an unreachable hub.
+  static bool isCleartextRawIp(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.scheme.toLowerCase() != 'http') return false;
+    final host = uri.host.toLowerCase();
+    if (host.isEmpty) return false;
+    if (host.contains(':')) return true; // IPv6 literal
+    final v4 = _parseIPv4(host);
+    if (v4 == null) return false;
+    if (v4[0] == 127) return false;
+    if (host == '10.0.2.2') return false;
+    return true;
+  }
+
   HubUrlPolicy._();
 
   /// `https` is always fine. `http` is only fine for loopback, the Android
@@ -74,6 +101,9 @@ class HubUrlPolicy {
     final octets = <int>[];
     for (final part in parts) {
       if (part.isEmpty || part.length > 3 || !_digits.hasMatch(part)) return null;
+      // Only canonical decimal parts: browsers read `010` as octal (8), so a leading zero would
+      // make the policy and the wire disagree about which address receives the secret.
+      if (part.length > 1 && part.startsWith('0')) return null;
       final value = int.parse(part);
       if (value > 255) return null;
       octets.add(value);
