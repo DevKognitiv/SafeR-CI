@@ -16,7 +16,7 @@ this folder is English with the French UI strings quoted as they appear in the a
 | [golden-harness.md](golden-harness.md) | The golden-test harness: bundled Manrope/Inter subsets, the 0.1 % tolerant comparator, the variant matrix, how to add or regenerate a golden, the 2 px proof run and the CI steps. | Adding a golden, reading a golden failure, changing fonts. |
 | [a11y-baseline.md](a11y-baseline.md) | The accessibility guideline baseline of the Home screen (tap targets, labels, contrast) with the one recorded exception and the text-scale 2.0 findings for Phase 1. | Changing a tap target, a label or a status colour; planning Phase 1 fixes. |
 | screen-signoff.md | One row per signed-off screen with commit SHA, scores, evidence and capture paths. Created by the first sign-off. | Checking whether a screen may ship. |
-| perf-baseline.md | Measured budgets per reference device, "pending hardware" until a trace is committed. Created by the first measurement. | Quoting any performance number. |
+| [perf-baseline.md](perf-baseline.md) | The Android bundle baseline measured in CI with the size budgets derived from it, and the device budgets, "pending hardware" until a trace is committed. | Quoting any performance or size number, re-basing the bundle gate. |
 | captures/ | Device evidence named `<date>-<device>-<screen>[-<state>][-<variant>]`. | — |
 
 Related: `../decisions/` (product decisions the gates depend on), `../contracts/` (hub and
