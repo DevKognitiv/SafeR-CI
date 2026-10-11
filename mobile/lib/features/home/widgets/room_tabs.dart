@@ -16,7 +16,8 @@ class RoomTabBar extends StatelessWidget {
     this.showUnassigned = false,
   });
 
-  static const double height = 52;
+  /// Pill tap target (48 dp) plus the 4 dp vertical padding on each side.
+  static const double height = 56;
 
   final List<Room> rooms;
   final String? selected;
@@ -71,7 +72,7 @@ class _RoomPill extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           onTap: onTap,
           child: Container(
-            constraints: const BoxConstraints(minHeight: 44, minWidth: 56),
+            constraints: const BoxConstraints(minHeight: 48, minWidth: 56),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             alignment: Alignment.center,
             child: Text(label, style: TextStyle(color: foreground, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, fontSize: 14)),

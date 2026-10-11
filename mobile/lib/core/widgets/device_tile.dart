@@ -7,10 +7,14 @@ import 'icon_map.dart';
 
 /// Tuya-style device card: icon, name, state summary and a quick toggle.
 class DeviceTile extends StatelessWidget {
-  const DeviceTile({super.key, required this.device, this.onTap, this.onToggle, this.compact = false});
+  const DeviceTile({super.key, required this.device, this.onTap, this.onLongPress, this.onToggle, this.compact = false});
 
   final Device device;
   final VoidCallback? onTap;
+
+  /// Long press on the card (device actions). Lives on the ink well so the tap and the long
+  /// press share one labelled semantics node.
+  final VoidCallback? onLongPress;
   final ValueChanged<bool>? onToggle;
   final bool compact;
 
@@ -25,6 +29,7 @@ class DeviceTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: EdgeInsets.all(compact ? 12 : 14),
           child: Column(

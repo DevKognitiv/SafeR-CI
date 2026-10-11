@@ -48,7 +48,8 @@ class HomeSwitcherButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: () => showHomeSwitcher(context),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
+            // 48 dp minimum tap target (androidTapTargetGuideline).
+            constraints: const BoxConstraints(minHeight: 48),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(

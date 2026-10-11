@@ -38,14 +38,12 @@ class DeviceGridSliver extends ConsumerWidget {
           delegate: SliverChildBuilderDelegate(
             (context, index) {
               final device = devices[index];
-              return GestureDetector(
+              return DeviceTile(
                 key: ValueKey('device-tile-${device.id}'),
+                device: device,
+                onTap: () => context.push(Routes.device(device.id)),
                 onLongPress: () => showDeviceActions(context, ref, device: device, rooms: rooms),
-                child: DeviceTile(
-                  device: device,
-                  onTap: () => context.push(Routes.device(device.id)),
-                  onToggle: device.primaryToggleCode == null ? null : (value) => _toggle(context, ref, device, value),
-                ),
+                onToggle: device.primaryToggleCode == null ? null : (value) => _toggle(context, ref, device, value),
               );
             },
             childCount: devices.length,
