@@ -1,0 +1,7 @@
+{
+  "_comment": "Budgets enforced by tool/ci/aab_check.py in CI. null = report only (baseline not yet measured). Rule from docs/qa: gate at measured baseline + 10% until the arm64 download estimate is under 35 MB, then 35 MB.",
+  "aab_bytes_max": null,
+  "abi_download_bytes_max": { "arm64-v8a": null, "armeabi-v7a": null, "x86_64": null },
+  "fonts_bytes_max": 460800,
+  "images_bytes_max": 256000
+}
