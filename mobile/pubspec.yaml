@@ -21,8 +21,9 @@ dependencies:
   dio: ^5.7.0
   web_socket_channel: ^3.0.1
 
-  # Local storage
+  # Local storage (secrets in the platform keystore, preferences in SharedPreferences)
   shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.4
 
   # Device onboarding (QR codes for Matter / Tuya)
   mobile_scanner: ^6.0.2
@@ -49,3 +50,15 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+  # Bundled brand type (SIL OFL 1.1; the licence sits next to each file). Both files are
+  # variable fonts subset to Latin (see docs/qa/golden-harness.md for ranges and sizes):
+  # Manrope wght 200-800 (default 400), Inter wght 400-700 with the optical size pinned to
+  # 14 (text). Pick a weight with FontVariation('wght', ...); FontWeight alone does not
+  # drive the axis. Phase 1 wires them into the theme; Phase 0 only ships them.
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/manrope/Manrope-Variable.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Variable.ttf

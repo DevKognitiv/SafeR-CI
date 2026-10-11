@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_exception.dart';
 import '../../core/i18n.dart';
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
@@ -14,7 +15,10 @@ import 'widgets/phone_dialer.dart';
 import 'widgets/sos_alert_list.dart';
 import 'widgets/sos_button.dart';
 
-enum _SosPhase { idle, locating, sending, sent, failed }
+enum _SosPhase { idle, locating, sending, addressRequired, sent, failed }
+
+/// Hub error code when neither a fix nor a confirmed address is available (`SAFER_SOS_REQUIRE_ADDRESS`).
+const kPositionRequiredCode = 'position_required';
 
 /// SafeR CI panic flow: locate, send the alert to the hub, show emergency numbers and recent alerts.
 class SosScreen extends ConsumerStatefulWidget {
@@ -37,20 +41,30 @@ class _SosScreenState extends ConsumerState<SosScreen> {
   SosAlert? _sentAlert;
   final _note = TextEditingController();
 
+  /// Address or landmark asked for when the hub answers `422 position_required`.
+  final _address = TextEditingController();
+  bool _addressConfirmed = false;
+
   @override
   void dispose() {
     _note.dispose();
+    _address.dispose();
     super.dispose();
   }
 
+  bool get _addressReady => _addressConfirmed && _address.text.trim().isNotEmpty;
+
   SosButtonState get _buttonState => switch (_phase) {
-        _SosPhase.idle || _SosPhase.failed => SosButtonState.idle,
+        _SosPhase.idle || _SosPhase.failed || _SosPhase.addressRequired => SosButtonState.idle,
         _SosPhase.locating || _SosPhase.sending => SosButtonState.sending,
         _SosPhase.sent => SosButtonState.sent,
       };
 
   Future<void> _send(String homeId) async {
     if (_phase == _SosPhase.locating || _phase == _SosPhase.sending) return;
+    // The confirmed address travels only once the hub asked for it (`position_required`).
+    final address = _address.text.trim();
+    final withAddress = _phase == _SosPhase.addressRequired && _addressReady;
     setState(() {
       _phase = _SosPhase.locating;
       _error = null;
@@ -60,7 +74,13 @@ class _SosScreenState extends ConsumerState<SosScreen> {
     setState(() => _phase = _SosPhase.sending);
     try {
       final note = _note.text.trim();
-      final alert = await ref.read(securityProvider(homeId).notifier).raiseSos(lat: point?.lat, lon: point?.lon, note: note.isEmpty ? null : note);
+      final alert = await ref.read(securityProvider(homeId).notifier).raiseSos(
+            lat: point?.lat,
+            lon: point?.lon,
+            note: note.isEmpty ? null : note,
+            address: withAddress ? address : null,
+            addressConfirmed: withAddress,
+          );
       ref.invalidate(sosAlertsProvider(homeId));
       if (!mounted) return;
       setState(() {
@@ -68,14 +88,26 @@ class _SosScreenState extends ConsumerState<SosScreen> {
         _sentAlert = alert;
       });
       showSnack(context, alert.forwarded ? context.tr(fr: 'Alerte SOS transmise aux secours', en: 'SOS alert sent to responders') : context.tr(fr: 'Alerte SOS enregistrée', en: 'SOS alert recorded'));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.code == kPositionRequiredCode) {
+        // No fix and the hub refuses a default position: ask for an address, nothing was sent.
+        setState(() => _phase = _SosPhase.addressRequired);
+        return;
+      }
+      _fail(e);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _phase = _SosPhase.failed;
-        _error = e.toString().replaceFirst(RegExp(r'^ApiException\([^)]*\): '), '');
-      });
-      showErrorSnack(context, e);
+      _fail(e);
     }
+  }
+
+  void _fail(Object e) {
+    setState(() {
+      _phase = _SosPhase.failed;
+      _error = e.toString().replaceFirst(RegExp(r'^ApiException\([^)]*\): '), '');
+    });
+    showErrorSnack(context, e);
   }
 
   Future<void> _resolve(String homeId, SosAlert alert) async {
@@ -95,6 +127,7 @@ class _SosScreenState extends ConsumerState<SosScreen> {
         _SosPhase.idle => context.tr(fr: 'Appuyez sur le bouton en cas d\'urgence', en: 'Press the button in an emergency'),
         _SosPhase.locating => context.tr(fr: 'Localisation...', en: 'Locating...'),
         _SosPhase.sending => context.tr(fr: 'Envoi de l\'alerte...', en: 'Sending the alert...'),
+        _SosPhase.addressRequired => context.tr(fr: 'Position inconnue : indiquez une adresse ou un repère', en: 'Location unknown: give an address or a landmark'),
         // Only claim responders were reached when the hub actually forwarded the alert.
         _SosPhase.sent => (_sentAlert?.forwarded ?? false)
             ? context.tr(fr: '✅ Alerte transmise aux secours', en: '✅ Alert sent to emergency services')
@@ -106,10 +139,13 @@ class _SosScreenState extends ConsumerState<SosScreen> {
   String _sentSummary(BuildContext context) {
     final alert = _sentAlert;
     final hasPosition = alert?.lat != null && alert?.lon != null;
+    final address = alert?.address?.trim() ?? '';
     final forwarded = alert?.forwarded ?? false;
     final position = hasPosition
         ? context.tr(fr: 'Votre position a été jointe à l\'alerte.', en: 'Your location was attached to the alert.')
-        : context.tr(fr: 'Position non disponible : indiquez votre adresse aux secours.', en: 'Location unavailable: give responders your address.');
+        : address.isNotEmpty
+            ? context.tr(fr: 'Adresse transmise : $address.', en: 'Address sent: $address.')
+            : context.tr(fr: 'Position non disponible : indiquez votre adresse aux secours.', en: 'Location unavailable: give responders your address.');
     final reach = forwarded
         ? context.tr(fr: 'Les secours SafeR ont été prévenus. Restez en sécurité.', en: 'SafeR responders have been notified. Stay safe.')
         : context.tr(fr: 'Le hub a déclenché l\'alarme mais n\'est pas relié aux secours : appelez un numéro d\'urgence ci-dessous.', en: 'The hub raised the alarm but is not linked to responders: call an emergency number below.');
@@ -157,6 +193,7 @@ class _SosScreenState extends ConsumerState<SosScreen> {
     final statusColor = switch (_phase) {
       _SosPhase.sent => SafeRColors.success,
       _SosPhase.failed => SafeRColors.danger,
+      _SosPhase.addressRequired => SafeRColors.warning,
       _ => Colors.white70,
     };
     return Scaffold(
@@ -193,6 +230,39 @@ class _SosScreenState extends ConsumerState<SosScreen> {
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, textAlign: TextAlign.center, style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54), maxLines: 3),
+            ],
+            if (_phase == _SosPhase.addressRequired) ...[
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('sos-address-field'),
+                controller: _address,
+                maxLength: 300,
+                maxLines: 2,
+                minLines: 1,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: context.tr(fr: 'Adresse ou repère', en: 'Address or landmark'),
+                  hintText: context.tr(fr: 'Ex. Cocody Angré, en face de la pharmacie', en: 'e.g. Cocody Angré, opposite the pharmacy'),
+                  prefixIcon: const Icon(Icons.place_outlined),
+                  counterText: '',
+                ),
+              ),
+              CheckboxListTile(
+                key: const Key('sos-address-confirm'),
+                value: _addressConfirmed,
+                onChanged: (value) => setState(() => _addressConfirmed = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: Text(context.tr(fr: 'Les secours iront à cette adresse', en: 'Responders will go to this address')),
+              ),
+              FilledButton.icon(
+                key: const Key('sos-send-with-address'),
+                onPressed: _addressReady ? () => _send(homeId) : null,
+                icon: const Icon(Icons.send),
+                label: Text(context.tr(fr: 'Envoyer avec cette adresse', en: 'Send with this address')),
+              ),
             ],
             if (sent) ...[
               const SizedBox(height: 6),

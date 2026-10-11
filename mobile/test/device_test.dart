@@ -192,6 +192,20 @@ void main() {
       expect(r.client.commands.last.value, isTrue);
     });
 
+    testWidgets('camera panel never starts the player for a protected stream and keeps the snapshot', (tester) async {
+      final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-cam'), client: DeviceFakeHubClient(protectedStreams: true));
+      expect(find.byType(CameraPanel), findsOneWidget);
+      expect(r.client.streamQualities, ['main']);
+      // The surface receives no descriptor (snapshot only) and the fallback explains why.
+      expect(find.text('PLAYER none'), findsOneWidget);
+      expect(find.textContaining('rtsp://demo.safer.local'), findsNothing);
+      expect(find.byKey(const Key('stream-protected')), findsOneWidget);
+      expect(find.textContaining('Flux protégé : la lecture directe est désactivée'), findsOneWidget);
+      expect(find.textContaining("L'aperçu via le hub reste disponible."), findsOneWidget);
+      expect(find.text('Réessayer'), findsNothing);
+      expect(find.text('Instantané'), findsOneWidget);
+    });
+
     testWidgets('lock panel asks for confirmation then sends locked=false', (tester) async {
       final r = await pumpDevice(tester, const DeviceDetailScreen(deviceId: 'dev-lock'));
       expect(find.text('VERROUILLÉE'), findsOneWidget);

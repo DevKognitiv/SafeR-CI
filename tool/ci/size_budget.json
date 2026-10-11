@@ -1,0 +1,7 @@
+{
+  "_comment": "Budgets enforced by tool/ci/aab_check.py in CI. Rule from docs/qa/perf-baseline.md: gate at measured baseline + 10 % until the arm64 download estimate is under 35 MB, then 35 MB. Baseline measured on commit 7b5a051 (CI run 38155948270): bundle 88015187 B, arm64-v8a download 19417698 B, armeabi-v7a 18521902 B, x86_64 20743505 B, fonts 357.4 KB, images 0. null = report only.",
+  "aab_bytes_max": 96800000,
+  "abi_download_bytes_max": { "arm64-v8a": 21360000, "armeabi-v7a": 20370000, "x86_64": 22820000 },
+  "fonts_bytes_max": 460800,
+  "images_bytes_max": 256000
+}

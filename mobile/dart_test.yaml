@@ -1,0 +1,7 @@
+# Test tags used by the SafeR app test suite (see docs/qa/golden-harness.md).
+tags:
+  golden:
+    description: >-
+      Pixel-truth goldens under test/goldens (0.1 % tolerant comparator, real
+      bundled fonts). Run alone with `flutter test --tags golden test/goldens`,
+      regenerate with `flutter test --update-goldens test/goldens`.

@@ -20,7 +20,7 @@ from app.hub.runtime import HubRuntime
 from app.hub.schemas import SecurityModeIn, SecurityOut, SosIn, SosOut
 from app.hub.services.device_service import DeviceService
 from app.hub.services.security_service import clear_alarm, security_state, set_security_mode
-from app.hub.services.sos import raise_sos
+from app.hub.services.sos import PositionRequired, raise_sos
 
 logger = logging.getLogger("safer.hub.routes.security")
 
@@ -93,8 +93,17 @@ async def create_sos(
     db: AsyncSession = Depends(get_db),
     runtime: HubRuntime = Depends(runtime_dep),
 ) -> SosOut:
-    """Raise an SOS: alarm message, ``sos.raised`` event, home alarm; forwarding to SafeR CI is queued in the background."""
-    alert = await raise_sos(runtime, db, access.home, access.user, body)
+    """Raise an SOS: alarm message, ``sos.raised`` event, home alarm; forwarding to SafeR CI is queued in the background.
+
+    422 ``{"code": "position_required"}`` when the hub requires an address (``SAFER_SOS_REQUIRE_ADDRESS``) and
+    neither a position nor a confirmed address was given; nothing is created in that case.
+    """
+    try:
+        alert = await raise_sos(runtime, db, access.home, access.user, body)
+    except PositionRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code, "message": exc.message}
+        ) from exc
     return SosOut.model_validate(alert)
 
 

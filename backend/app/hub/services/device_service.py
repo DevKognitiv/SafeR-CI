@@ -13,6 +13,7 @@ from app.hub.adapters.base import AdapterError, BrandAdapter, DeviceRef, DeviceS
 from app.hub.adapters.registry import registry
 from app.hub.capabilities import NOTABLE_CODES, coerce_value, find_capability
 from app.hub.models import Device, DeviceEvent, Home, Integration, Message, utcnow
+from app.hub.schemas import scrub_credentials
 
 logger = logging.getLogger("safer.hub.devices")
 
@@ -39,7 +40,7 @@ def _serialize_device(device: Device) -> Dict[str, Any]:
         "protocol": device.protocol,
         "category": device.category,
         "online": device.online,
-        "state": dict(device.state or {}),
+        "state": scrub_credentials(dict(device.state or {})),
         "capabilities": list(device.capabilities or []),
         "icon": device.icon,
         "parent_id": device.parent_id,
@@ -263,7 +264,7 @@ class DeviceService:
         bus = self.runtime.bus
         await bus.publish(
             ev.HubEvent(ev.DEVICE_STATE, home_id=device.home_id, device_id=device.id,
-                        payload={"state": new_state, "online": device.online, "changed": changed})
+                        payload={"state": scrub_credentials(new_state), "online": device.online, "changed": changed})
         )
         for event in recorded:
             await bus.publish(

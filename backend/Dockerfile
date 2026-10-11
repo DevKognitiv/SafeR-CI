@@ -15,7 +15,8 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY app ./app
-COPY pytest.ini .pylintrc* ./
+COPY alembic ./alembic
+COPY alembic.ini pytest.ini .pylintrc* ./
 
 EXPOSE 8000
 

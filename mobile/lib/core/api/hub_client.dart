@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../config.dart';
+import '../hub_url_policy.dart';
 import '../models/models.dart';
 import 'api_exception.dart';
 
@@ -20,11 +21,32 @@ class HubClient {
       ..responseType = ResponseType.json;
     _dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
       final token = _tokenProvider();
-      if (token != null && token.isNotEmpty) {
-        options.headers['Authorization'] = 'Bearer $token';
+      final bearer = token != null && token.isNotEmpty;
+      // Defence in depth behind the URL validators: a secret (session token or
+      // login password) never travels in cleartext to a public host.
+      if ((bearer || _carriesPassword(options)) && HubUrlPolicy.check(_baseUrl) == HubUrlVerdict.insecurePublic) {
+        handler.reject(DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: ApiException(kInsecureHubUrlMessageFr, code: kInsecureHubUrlCode),
+        ));
+        return;
       }
+      if (bearer) options.headers['Authorization'] = 'Bearer $token';
       handler.next(options);
     }));
+  }
+
+  static bool _carriesPassword(RequestOptions options) => options.path == '/auth/login' || options.path == '/auth/register';
+
+  /// The bearer header for requests that bypass [Dio] (snapshot images, players), under the
+  /// same guard as the interceptor: empty when there is no token or when the base URL is an
+  /// insecure public host, so the token never leaves the app in cleartext that way either.
+  Map<String, String> authHeaders() {
+    final token = _tokenProvider();
+    if (token == null || token.isEmpty) return const {};
+    if (HubUrlPolicy.check(_baseUrl) == HubUrlVerdict.insecurePublic) return const {};
+    return {'Authorization': 'Bearer $token'};
   }
 
   final Dio _dio;
@@ -58,14 +80,22 @@ class HubClient {
   }
 
   ApiException _toApiException(DioException e) {
+    final embedded = e.error;
+    if (embedded is ApiException) return embedded;
     final status = e.response?.statusCode;
     final data = e.response?.data;
     String message = e.message ?? 'Network error';
     String? code;
+    int? retryAfter;
     if (data is Map) {
       final detail = data['detail'];
       if (detail is String) {
         message = detail;
+      } else if (detail is Map) {
+        // Structured hub errors: {"detail": {"code": "rate_limited", "message": "...", "retry_after": 42}}
+        message = (detail['message'] ?? detail['detail'] ?? detail['msg'])?.toString() ?? message;
+        code = detail['code'] as String?;
+        retryAfter = (detail['retry_after'] as num?)?.toInt();
       } else if (detail is List && detail.isNotEmpty) {
         final first = detail.first;
         if (first is Map && first['msg'] != null) {
@@ -73,11 +103,12 @@ class HubClient {
           message = loc.isNotEmpty ? '$loc: ${first['msg']}' : first['msg'].toString();
         }
       }
-      code = data['code'] as String?;
+      code ??= data['code'] as String?;
     } else if (status == null) {
       message = 'Impossible de joindre le hub SafeR ($_baseUrl)';
     }
-    return ApiException(message, status: status, code: code);
+    retryAfter ??= int.tryParse(e.response?.headers.value('retry-after') ?? '');
+    return ApiException(message, status: status, code: code, retryAfter: retryAfter);
   }
 
   static Map<String, dynamic> _map(dynamic data) => Map<String, dynamic>.from(data as Map);
@@ -300,8 +331,20 @@ class HubClient {
 
   Future<SecurityState> clearAlarm(String homeId) => _run(() => _dio.post('/homes/$homeId/security/alarm/clear'), (d) => SecurityState.fromJson(_map(d)));
 
-  Future<SosAlert> raiseSos(String homeId, {double? lat, double? lon, String? note, String incidentType = 'panic'}) => _run(
-      () => _dio.post('/homes/$homeId/sos', data: {'lat': lat, 'lon': lon, 'note': note, 'incident_type': incidentType}), (d) => SosAlert.fromJson(_map(d)));
+  /// Raises an SOS. [address] and [addressConfirmed] answer the hub's `422 position_required`
+  /// (no fix, no home position, `SAFER_SOS_REQUIRE_ADDRESS` on): a confirmed address or landmark.
+  Future<SosAlert> raiseSos(String homeId,
+          {double? lat, double? lon, String? note, String? address, bool addressConfirmed = false, String incidentType = 'panic'}) =>
+      _run(
+          () => _dio.post('/homes/$homeId/sos', data: {
+                'lat': lat,
+                'lon': lon,
+                'note': note,
+                'incident_type': incidentType,
+                if (address != null && address.isNotEmpty) 'address': address,
+                if (addressConfirmed) 'address_confirmed': true,
+              }),
+          (d) => SosAlert.fromJson(_map(d)));
 
   Future<List<SosAlert>> sosAlerts(String homeId) => _run(() => _dio.get('/homes/$homeId/sos'), (d) => _list(d).map(SosAlert.fromJson).toList());
 

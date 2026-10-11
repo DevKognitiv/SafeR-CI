@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../api/api_exception.dart';
+import '../hub_url_policy.dart';
 import '../i18n.dart';
 
 /// Centered progress indicator.
@@ -135,10 +137,19 @@ class StateChip extends StatelessWidget {
   }
 }
 
+/// Human message for an error: client-side error codes get a localised text,
+/// anything else keeps the hub message (without the exception prefix).
+String localizedErrorMessage(BuildContext context, Object error) {
+  if (error is ApiException && error.code == kInsecureHubUrlCode) {
+    return context.tr(fr: kInsecureHubUrlMessageFr, en: kInsecureHubUrlMessageEn);
+  }
+  return error.toString().replaceFirst(RegExp(r'^ApiException\([^)]*\): '), '');
+}
+
 /// Show an error snackbar from an exception.
 void showErrorSnack(BuildContext context, Object error) {
-  final message = error.toString().replaceFirst(RegExp(r'^ApiException\([^)]*\): '), '');
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Theme.of(context).colorScheme.error));
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(localizedErrorMessage(context, error)), backgroundColor: Theme.of(context).colorScheme.error));
 }
 
 void showSnack(BuildContext context, String message) {

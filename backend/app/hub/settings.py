@@ -40,6 +40,25 @@ class HubSettings(BaseSettings):
     HUB_DEMO_ENABLED: bool = True
     HUB_HTTP_TIMEOUT: float = 10.0
     HUB_ALLOW_OPEN_REGISTRATION: bool = True
+    HUB_MIN_APP_VERSION: str = "0.2.0"  # oldest app version this hub still serves (announced on /health)
+    HUB_AUTO_MIGRATE: bool = True  # run Alembic migrations on startup (off: the schema is managed by hand)
+
+    # SOS: when on, an SOS without a phone or home position needs a user-confirmed address (no Abidjan default)
+    SAFER_SOS_REQUIRE_ADDRESS: bool = False
+
+    # Camera streams: credentials stay on the hub unless the owner explicitly accepts the LAN risk
+    HUB_STREAM_CREDENTIALS_TO_CLIENTS: bool = False
+
+    # Rate limiting / lockout on /auth (in-process sliding windows, see ``ratelimit.py``)
+    HUB_RATE_LIMIT_ENABLED: bool = True
+    HUB_TRUST_PROXY_HEADERS: bool = False  # client IP = last X-Forwarded-For entry (only behind a proxy that adds the peer)
+    HUB_LOGIN_PER_IP_PER_MINUTE: int = 10
+    HUB_LOGIN_PER_ACCOUNT_PER_MINUTE: int = 5
+    HUB_REGISTER_PER_IP_PER_HOUR: int = 5
+    HUB_PUSH_TOKEN_PER_USER_PER_MINUTE: int = 10
+    HUB_LOGIN_LOCKOUT_THRESHOLD: int = 5  # consecutive failed logins per account...
+    HUB_LOGIN_LOCKOUT_WINDOW_SECONDS: int = 900  # ...within this window...
+    HUB_LOGIN_LOCKOUT_SECONDS: int = 900  # ...lock the account for this long
 
     # Brand integrations
     MATTER_SERVER_URL: str = "ws://localhost:5580/ws"

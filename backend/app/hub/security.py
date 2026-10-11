@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import secrets
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Any, Dict, Optional
 
 import bcrypt
@@ -16,6 +18,16 @@ def hash_password(password: str) -> str:
     """Hash a password with bcrypt (bcrypt caps input at 72 bytes)."""
     raw = password.encode("utf-8")[:72]
     return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
+
+
+@lru_cache(maxsize=1)
+def dummy_password_hash() -> str:
+    """Hash of a random secret nobody knows, checked when a login names an unknown e-mail.
+
+    Verifying against it costs the same bcrypt work as a real account, so response times do not reveal which
+    e-mails are registered. Computed once per process, on first use.
+    """
+    return hash_password(secrets.token_urlsafe(32))
 
 
 def verify_password(password: str, password_hash: str) -> bool:

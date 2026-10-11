@@ -79,6 +79,32 @@ void main() {
       const info = StreamInfo(url: 'rtsp://cam:554/main', username: 'admin', password: 'p@ss');
       expect(info.authenticatedUrl, 'rtsp://admin:p%40ss@cam:554/main');
     });
+
+    test('StreamInfo parses the credential flags and blocks direct playback without them', () {
+      final protected = StreamInfo.fromJson({
+        'url': 'rtsp://cam:554/main',
+        'type': 'rtsp',
+        'headers': {},
+        'auth_required': true,
+        'credentials_included': false,
+        'username': null,
+        'password': null,
+      });
+      expect(protected.authRequired, isTrue);
+      expect(protected.credentialsIncluded, isFalse);
+      expect(protected.hasCredentials, isFalse);
+      expect(protected.directPlaybackAllowed, isFalse);
+      expect(protected.authenticatedUrl, 'rtsp://cam:554/main');
+
+      final open = StreamInfo.fromJson({'url': 'http://cam/stream.m3u8', 'type': 'hls'});
+      expect(open.authRequired, isFalse);
+      expect(open.credentialsIncluded, isFalse);
+      expect(open.directPlaybackAllowed, isTrue);
+
+      final included = StreamInfo.fromJson({'url': 'rtsp://cam:554/main', 'auth_required': true, 'credentials_included': true, 'username': 'admin', 'password': 'p@ss'});
+      expect(included.directPlaybackAllowed, isTrue);
+      expect(included.authenticatedUrl, 'rtsp://admin:p%40ss@cam:554/main');
+    });
   });
 
   group('HubClient', () {

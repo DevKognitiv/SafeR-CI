@@ -6,6 +6,7 @@ import '../../../core/i18n.dart';
 import '../../../core/providers/providers.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../auth/widgets/auth_validators.dart';
 import 'me_common.dart';
 
 /// Titled group of settings rows.
@@ -92,16 +93,9 @@ Future<T?> showOptionSheet<T>(BuildContext context, {required String title, requ
       },
     );
 
-/// Basic hub URL validation (http/https + host).
-String? validateHubUrl(BuildContext context, String? value) {
-  final v = (value ?? '').trim();
-  if (v.isEmpty) return context.tr(fr: "Saisissez l'URL du hub", en: 'Enter the hub URL');
-  final uri = Uri.tryParse(v);
-  if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https') || uri.host.isEmpty) {
-    return context.tr(fr: 'URL invalide (ex. http://192.168.1.20:8000)', en: 'Invalid URL (e.g. http://192.168.1.20:8000)');
-  }
-  return null;
-}
+/// Hub URL validation shared with the login sheet (http/https + host, https
+/// required for a public hub).
+String? validateHubUrl(BuildContext context, String? value) => AuthValidators.hubUrl(context, value);
 
 String normalizeHubUrl(String value) => value.trim().replaceAll(RegExp(r'/+$'), '');
 

@@ -173,14 +173,17 @@ class SecurityModeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = SafeRColors.forSecurityMode(mode);
     final label = securityModeLabel(context, mode);
+    // Own semantics node (otherwise the button merges into the whole weather card) with a
+    // 48 dp tap target: 8 + 32 dp chip + 8, shorter than the summary so the card does not grow.
     return Semantics(
+      container: true,
       button: true,
       label: '${context.tr(fr: 'Mode de sécurité', en: 'Security mode')}: $label',
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: () => context.go(Routes.security),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),

@@ -234,6 +234,7 @@ class SosAlert(Base):
     lat: Mapped[Optional[float]] = mapped_column(Float)
     lon: Mapped[Optional[float]] = mapped_column(Float)
     note: Mapped[Optional[str]] = mapped_column(Text)
+    address: Mapped[Optional[str]] = mapped_column(String(300))  # free-text address / landmark (migration 0002)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     forwarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     incident_id: Mapped[Optional[str]] = mapped_column(String(64))

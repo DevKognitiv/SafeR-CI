@@ -50,7 +50,7 @@ class SecurityState {
 }
 
 class SosAlert {
-  const SosAlert({required this.id, required this.homeId, this.userId, this.lat, this.lon, this.note, this.status = 'open', this.forwarded = false, this.incidentId, this.createdAt});
+  const SosAlert({required this.id, required this.homeId, this.userId, this.lat, this.lon, this.note, this.address, this.status = 'open', this.forwarded = false, this.incidentId, this.createdAt});
 
   final String id;
   final String homeId;
@@ -58,6 +58,9 @@ class SosAlert {
   final double? lat;
   final double? lon;
   final String? note;
+
+  /// Free-text address or landmark the user gave with the alert (hub `SosOut.address`).
+  final String? address;
   final String status;
   final bool forwarded;
   final String? incidentId;
@@ -70,6 +73,7 @@ class SosAlert {
         lat: (json['lat'] as num?)?.toDouble(),
         lon: (json['lon'] as num?)?.toDouble(),
         note: json['note'] as String?,
+        address: json['address'] as String?,
         status: (json['status'] as String?) ?? 'open',
         forwarded: json['forwarded'] == true,
         incidentId: json['incident_id'] as String?,

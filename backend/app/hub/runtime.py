@@ -10,6 +10,7 @@ import httpx
 from app.hub.adapters.base import AdapterContext
 from app.hub.db import Database
 from app.hub.events import EventBus
+from app.hub.ratelimit import RateLimiter
 from app.hub.security import CredentialVault
 from app.hub.settings import HubSettings, get_settings
 
@@ -30,6 +31,7 @@ class HubRuntime:
         self.db = Database(database_url or self.settings.database_url)
         self.bus = EventBus()
         self.vault = CredentialVault(self.settings.encryption_key)
+        self.limiter = RateLimiter()  # /auth rate limits + lockout; per runtime so tests are isolated
         self.transport = transport
         self.start_services = start_services
         self.started = False
@@ -86,10 +88,15 @@ class HubRuntime:
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
-        """Create tables and start background services (idempotent)."""
+        """Prepare the schema (migrations) and start background services (idempotent)."""
         if self.started:
             return
-        await self.db.create_all()
+        await self.prepare_schema()
+        if self.settings.HUB_STREAM_CREDENTIALS_TO_CLIENTS:
+            logger.warning(
+                "HUB_STREAM_CREDENTIALS_TO_CLIENTS is on: camera credentials are sent to every member's phone "
+                "(LAN exposure accepted by the owner until the hub stream relay exists)"
+            )
         # Late imports: services import models/runtime
         from app.hub.services.device_service import DeviceService  # pylint: disable=import-outside-toplevel
 
@@ -98,6 +105,20 @@ class HubRuntime:
             await self._start_background()
         self.started = True
         logger.info("SafeR Hub runtime started (db=%s)", self.db.url.split("@")[-1])
+
+    async def prepare_schema(self) -> None:
+        """Alembic ``upgrade head`` (``HUB_AUTO_MIGRATE``), or ``create_all`` for hand-managed schemas and tests.
+
+        ``create_all`` only adds missing tables and never alters existing ones; with auto-migrate off the
+        operator runs ``alembic upgrade head`` by hand after each release.
+        """
+        if not self.settings.HUB_AUTO_MIGRATE:
+            await self.db.create_all()
+            return
+        from app.hub.migrations import migrate_async  # pylint: disable=import-outside-toplevel
+
+        action = await migrate_async(self.db.engine)
+        logger.info("Database schema %s (alembic head)", action)
 
     async def _start_background(self) -> None:
         try:

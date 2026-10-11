@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Dict, List, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 import pytest
@@ -19,7 +20,7 @@ from app.hub.adapters.base import (
 from app.hub.adapters.registry import registry
 from app.hub.app import create_app
 from app.hub.capabilities import alarm_panel_caps
-from app.hub.models import Device, Home, Message
+from app.hub.models import Device, Home, Message, SosAlert
 from app.hub.runtime import set_runtime
 from app.hub.schemas import DeviceOut
 from app.hub.services.device_service import DeviceService
@@ -361,8 +362,8 @@ async def test_clear_alarm_reaches_hardware_panels_best_effort(client, auth, hom
 
 
 # ----------------------------------------------------------------------------- SOS
-@pytest_asyncio.fixture
-async def incidents():
+@asynccontextmanager
+async def incidents_hub(**overrides: Any) -> AsyncIterator[Dict[str, Any]]:
     """Hub configured to forward SOS to SafeR CI, with the incident API mocked (``calls`` collects requests)."""
     calls: List[httpx.Request] = []
 
@@ -371,7 +372,7 @@ async def incidents():
         return httpx.Response(201, json={"id": "inc-123", "status": "open", "severity": "critical"})
 
     app = create_app(
-        settings=make_settings(SAFER_INCIDENTS_URL=INCIDENTS_URL, SAFER_INCIDENTS_TOKEN="tok-abc"),
+        settings=make_settings(SAFER_INCIDENTS_URL=INCIDENTS_URL, SAFER_INCIDENTS_TOKEN="tok-abc", **overrides),
         database_url="sqlite+aiosqlite://", transport=httpx.MockTransport(handler), start_services=False,
     )
     runtime = app.state.hub_runtime
@@ -386,6 +387,19 @@ async def incidents():
     finally:
         await runtime.stop()
         set_runtime(None)
+
+
+@pytest_asyncio.fixture
+async def incidents():
+    async with incidents_hub() as hub:
+        yield hub
+
+
+@pytest_asyncio.fixture
+async def strict_incidents():
+    """Same hub with ``SAFER_SOS_REQUIRE_ADDRESS`` on (the Phase 2 staging configuration)."""
+    async with incidents_hub(SAFER_SOS_REQUIRE_ADDRESS=True) as hub:
+        yield hub
 
 
 async def test_sos_creates_alert_message_event_and_forwards(incidents):
@@ -438,6 +452,8 @@ async def test_sos_location_falls_back_to_home_then_abidjan(incidents):
     await incidents["app"].state.hub_runtime.wait_tasks()
     sent = json.loads(calls[-1].content)
     assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
+    assert sent["location_source"] == "default" and sent["location_confidence"] == "none"
+    assert sent["description"].startswith("Position inconnue (defaut Abidjan-Plateau) - ")
 
 
 async def test_sos_forward_failure_is_not_fatal(incidents):
@@ -636,3 +652,152 @@ async def test_sos_answers_before_the_incident_platform_does():
     finally:
         await runtime.stop()
         set_runtime(None)
+
+
+# ----------------------------------------------------------------------------- SOS position gating
+UNKNOWN_PREFIX = "Position inconnue (defaut Abidjan-Plateau) - "
+
+
+async def raise_sos_http(hub: Dict[str, Any], home_id: str, body: Dict[str, Any]) -> httpx.Response:
+    """``POST /homes/{id}/sos`` as the hub's user."""
+    return await hub["client"].post(f"{PREFIX}/homes/{home_id}/sos", json=body, headers=hub["auth"]["headers"])
+
+
+async def last_incident(hub: Dict[str, Any]) -> dict:
+    """Body of the latest incident POST once the background forwarding finished."""
+    await hub["app"].state.hub_runtime.wait_tasks()
+    return json.loads(hub["calls"][-1].content)
+
+
+async def home_without_position(hub: Dict[str, Any]) -> dict:
+    """A second home with no coordinates (the Abidjan default would apply)."""
+    response = await hub["client"].post(f"{PREFIX}/homes", json={"name": "Bureau"}, headers=hub["auth"]["headers"])
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize("require_address", [False, True])
+async def test_sos_phone_and_home_positions_in_both_flag_states(require_address):
+    async with incidents_hub(SAFER_SOS_REQUIRE_ADDRESS=require_address) as hub:
+        home = hub["home"]
+        # phone position wins and is flagged as GPS; no address needed whatever the flag says
+        response = await raise_sos_http(hub, home["id"], {"lat": 5.3456, "lon": -4.0123, "note": "Aide"})
+        assert response.status_code == 201, response.text
+        assert response.json()["address"] is None
+        sent = await last_incident(hub)
+        assert (sent["location_lat"], sent["location_lon"]) == (5.3456, -4.0123)
+        assert sent["location_source"] == "phone" and sent["location_confidence"] == "gps"
+        assert sent["description"] == "Aide" and "address" not in sent
+        # home coordinates next; an address given with it is passed along
+        response = await raise_sos_http(hub, home["id"], {"address": "  Carrefour Duncan,   portail vert "})
+        assert response.status_code == 201, response.text
+        assert response.json()["address"] == "Carrefour Duncan, portail vert"
+        sent = await last_incident(hub)
+        assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0)
+        assert sent["location_source"] == "home" and sent["location_confidence"] == "home"
+        assert sent["description"] == "SOS SafeR app" and sent["address"] == "Carrefour Duncan, portail vert"
+        assert len(hub["calls"]) == 2
+        listed = (await hub["client"].get(f"{PREFIX}/homes/{home['id']}/sos", headers=hub["auth"]["headers"])).json()
+        assert [s["address"] for s in listed] == ["Carrefour Duncan, portail vert", None]
+
+
+async def test_sos_default_position_is_flagged_when_address_is_not_required(incidents):
+    other = await home_without_position(incidents)
+    raised = collect_events(incidents["app"], ev.SOS_RAISED)
+    response = await raise_sos_http(incidents, other["id"], {"note": "Au secours"})
+    assert response.status_code == 201, response.text
+    sent = await last_incident(incidents)
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
+    assert sent["location_source"] == "default" and sent["location_confidence"] == "none"
+    assert sent["description"] == UNKNOWN_PREFIX + "Au secours" and "address" not in sent
+    assert raised[0].payload["location_source"] == "default" and raised[0].payload["address"] is None
+    alarm = (await messages(incidents["client"], incidents["auth"], other["id"], kind="alarm"))[0]
+    assert "Position inconnue." in alarm["body"]
+    # same with an unconfirmed address: accepted, address forwarded, position still flagged as default
+    response = await raise_sos_http(incidents, other["id"], {"address": "Rue des Jardins"})
+    assert response.status_code == 201
+    sent = await last_incident(incidents)
+    assert sent["address"] == "Rue des Jardins" and sent["location_source"] == "default"
+
+
+async def test_sos_without_position_is_refused_when_address_is_required(strict_incidents):
+    hub = strict_incidents
+    app, http, auth = hub["app"], hub["client"], hub["auth"]
+    other = await home_without_position(hub)
+    raised = collect_events(app, ev.SOS_RAISED)
+    alarms = collect_events(app, ev.SECURITY_ALARM)
+    new_messages = collect_events(app, ev.MESSAGE_NEW)
+    bodies = [{}, {"note": "help"}, {"address": "Rue des Jardins"}, {"address": "   ", "address_confirmed": True}, {"address_confirmed": True}]
+    for body in bodies:
+        response = await raise_sos_http(hub, other["id"], body)
+        assert response.status_code == 422, (body, response.text)
+        detail = response.json()["detail"]
+        assert detail["code"] == "position_required" and detail["message"]
+    await app.state.hub_runtime.wait_tasks()
+    # nothing was created: no alert, no message, no event, no alarm, no incident
+    assert not hub["calls"] and not raised and not alarms and not new_messages
+    async with app.state.hub_runtime.db.session() as session:
+        assert (await session.execute(select(SosAlert))).scalars().all() == []
+        assert (await session.execute(select(Message).where(Message.home_id == other["id"]))).scalars().all() == []
+    assert (await http.get(f"{PREFIX}/homes/{other['id']}/sos", headers=auth["headers"])).json() == []
+    assert (await security(http, auth, other["id"]))["alarm_active"] is False
+
+
+async def test_sos_with_confirmed_address_is_accepted_when_address_is_required(strict_incidents, caplog):
+    hub = strict_incidents
+    other = await home_without_position(hub)
+    raised = collect_events(hub["app"], ev.SOS_RAISED)
+    with caplog.at_level("INFO", logger="safer.hub.sos"):
+        response = await raise_sos_http(
+            hub, other["id"], {"address": "Yopougon Niangon, pharmacie Sainte-Marie", "address_confirmed": True, "note": "Agression"}
+        )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["address"] == "Yopougon Niangon, pharmacie Sainte-Marie" and body["lat"] is None
+    sent = await last_incident(hub)
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
+    assert sent["location_source"] == "default" and sent["location_confidence"] == "none"
+    assert sent["address"] == "Yopougon Niangon, pharmacie Sainte-Marie"
+    assert sent["description"] == UNKNOWN_PREFIX + "Agression"
+    assert raised[0].payload["address"] == "Yopougon Niangon, pharmacie Sainte-Marie"
+    alarm = (await messages(hub["client"], hub["auth"], other["id"], kind="alarm"))[0]
+    assert "Adresse: Yopougon Niangon, pharmacie Sainte-Marie" in alarm["body"] and "Position inconnue." in alarm["body"]
+    # the user-asserted confirmation is logged with the user id, never the address itself
+    confirmations = [r.getMessage() for r in caplog.records if "address confirmed" in r.getMessage()]
+    assert confirmations and hub["auth"]["user"]["id"] in confirmations[0] and "Yopougon" not in confirmations[0]
+
+
+async def test_sos_input_validation(client, auth, home):
+    headers = auth["headers"]
+    url = f"{PREFIX}/homes/{home['id']}/sos"
+    assert (await client.post(url, json={"lat": 5.3}, headers=headers)).status_code == 422  # lat without lon
+    assert (await client.post(url, json={"lat": 95, "lon": 0}, headers=headers)).status_code == 422
+    assert (await client.post(url, json={"lon": -200, "lat": 0}, headers=headers)).status_code == 422
+    assert (await client.post(url, json={"address": "x" * 301}, headers=headers)).status_code == 422
+    ok = await client.post(url, json={"address": "x" * 300, "address_confirmed": True}, headers=headers)
+    assert ok.status_code == 201 and ok.json()["address"] == "x" * 300
+
+
+async def test_sos_zero_coordinates_are_not_a_fix(strict_incidents):
+    """``(0, 0)`` is the "no fix" sentinel, not a position in the Gulf of Guinea: the address gate applies."""
+    hub = strict_incidents
+    other = await home_without_position(hub)
+    response = await raise_sos_http(hub, other["id"], {"lat": 0, "lon": 0})
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"]["code"] == "position_required"
+    # with a confirmed address the alert goes through, flagged as default position (never as a GPS fix)
+    response = await raise_sos_http(hub, other["id"], {"lat": 0.0, "lon": 0.0, "address": "Marché de Treichville", "address_confirmed": True})
+    assert response.status_code == 201, response.text
+    sent = await last_incident(hub)
+    assert sent["location_source"] == "default" and sent["location_confidence"] == "none"
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
+
+
+async def test_sos_zero_coordinates_fall_back_to_the_home(incidents):
+    home = incidents["home"]
+    response = await raise_sos_http(incidents, home["id"], {"lat": 0, "lon": 0})
+    assert response.status_code == 201, response.text
+    assert response.json()["lat"] is None and response.json()["lon"] is None  # nothing pretends to be a fix
+    sent = await last_incident(incidents)
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0)
+    assert sent["location_source"] == "home" and sent["location_confidence"] == "home"

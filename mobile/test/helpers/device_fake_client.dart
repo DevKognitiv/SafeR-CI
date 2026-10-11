@@ -6,7 +6,8 @@ import 'fake_hub_client.dart';
 /// FakeHubClient variant for the device screens: offline devices, extra devices
 /// (generic + gateway with children), a "no home" mode and refresh counting.
 class DeviceFakeHubClient extends FakeHubClient {
-  DeviceFakeHubClient({this.offlineIds = const {}, this.noHomes = false, this.role = 'owner', List<Device>? extras}) : extras = extras ?? demoExtras(FakeHubClient.homeId);
+  DeviceFakeHubClient({this.offlineIds = const {}, this.noHomes = false, this.role = 'owner', this.protectedStreams = false, List<Device>? extras})
+      : extras = extras ?? demoExtras(FakeHubClient.homeId);
 
   /// Devices reported offline.
   final Set<String> offlineIds;
@@ -16,6 +17,10 @@ class DeviceFakeHubClient extends FakeHubClient {
 
   /// Role of the signed-in user in the demo home.
   final String role;
+
+  /// When true, stream descriptors follow the hub default contract for a
+  /// protected camera: `auth_required` without the credentials.
+  final bool protectedStreams;
 
   /// Additional devices (kept outside the shared fake's private list).
   List<Device> extras;
@@ -125,8 +130,10 @@ class DeviceFakeHubClient extends FakeHubClient {
   }
 
   @override
-  Future<StreamInfo> stream(String deviceId, {String quality = 'main'}) {
+  Future<StreamInfo> stream(String deviceId, {String quality = 'main'}) async {
     streamQualities.add(quality);
-    return super.stream(deviceId, quality: quality);
+    final info = await super.stream(deviceId, quality: quality);
+    if (!protectedStreams) return info;
+    return StreamInfo(url: info.url, type: info.type, headers: info.headers, authRequired: true);
   }
 }

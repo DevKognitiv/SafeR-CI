@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config.dart';
+import 'core/demo/demo.dart';
 import 'core/i18n.dart';
 import 'core/providers/providers.dart';
 import 'core/router.dart';
@@ -24,6 +25,8 @@ class SafeRApp extends ConsumerWidget {
       darkTheme: SafeRTheme.darkTheme,
       themeMode: themeMode,
       routerConfig: router,
+      // Demo build only: text scale / animation hooks and the readiness signal.
+      builder: kDemoMode ? demoFrameBuilder : null,
       locale: locale,
       supportedLocales: kSupportedLocales,
       localizationsDelegates: const [

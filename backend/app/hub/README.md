@@ -23,7 +23,8 @@ HUB_DATABASE_URL=sqlite+aiosqlite:///./safer_hub.db uvicorn app.hub.app:app --po
 ```
 
 - API: `http://localhost:8000/api/v1/hub/...` - OpenAPI docs: `http://localhost:8000/docs`
-- Health: `GET /api/v1/hub/health` -> `{status, version, adapters, sia_receiver, categories}`
+- Health: `GET /api/v1/hub/health` -> `{status, version, adapters, sia_receiver, categories, hub_version,
+  api_version, min_app_version, flags, clock_synced, server_time}` (see *App/hub contract* below).
 - The first registered user (`POST /auth/register`) becomes hub admin.
 - Realtime: `WS /api/v1/hub/ws?token=<jwt>&home_id=<home>` (send `{"type":"ping"}`).
 
@@ -40,7 +41,99 @@ pylint --rcfile=.pylintrc app/hub           # CI gate: score >= 9.0
 
 Tests never touch the network: adapters do all HTTP through `ctx.http()` so tests inject
 `httpx.MockTransport` via `AdapterContext(transport=...)`; WebSocket adapters (Matter) accept an
-injectable connector. Each test gets a fresh in-memory SQLite database (`tests/conftest.py`).
+injectable connector. Each test gets a fresh in-memory SQLite database (`tests/conftest.py`,
+`create_all`; the Alembic path is covered by `tests/test_migrations.py`).
+
+## Migrations
+
+The schema is versioned with Alembic (`backend/alembic.ini`, `backend/alembic/`). `env.py` binds
+`app.hub.db.Base` with every model imported and resolves the database URL from `-x url=...`, else
+`HUB_DATABASE_URL`, else `DATABASE_URL`, else `sqlite:///./safer_hub.db`; async URLs are converted
+to their sync drivers (`sqlite+aiosqlite` -> `sqlite`, `postgresql+asyncpg` -> `postgresql+psycopg2`)
+and SQLite runs in batch mode. The version table is `hub_alembic_version` (the main API may share
+the database). It never reads `.env` and never logs credentials.
+
+On startup (`HUB_AUTO_MIGRATE=true`, the default) the runtime brings the database to `head` through
+its own engine: an empty database is created, a hub created with `create_all` before migrations
+existed (tables, no `hub_alembic_version`) is stamped `0001_baseline` then upgraded, and any other
+database is upgraded. With `HUB_AUTO_MIGRATE=false` the hub only runs `create_all` (missing tables,
+never column changes) and you run the upgrade yourself.
+
+```bash
+cd backend
+# Upgrade (the running hub does this itself unless HUB_AUTO_MIGRATE=false)
+python -m alembic -c alembic.ini upgrade head
+python -m alembic -c alembic.ini -x url=sqlite:////var/lib/safer/hub.db upgrade head
+python -m alembic -c alembic.ini current            # which revision the database is at
+
+# New revision after changing models.py (autogenerate, then review the file by hand)
+python -m alembic -c alembic.ini -x url=sqlite:////tmp/autogen.db upgrade head
+python -m alembic -c alembic.ini -x url=sqlite:////tmp/autogen.db revision --autogenerate \
+    -m "short description" --rev-id 0003_short_description
+
+# Rollback rehearsal before a hub release (on a copy of the production database)
+cp /var/lib/safer/hub.db /tmp/rehearsal.db
+python -m alembic -c alembic.ini -x url=sqlite:////tmp/rehearsal.db upgrade head
+python -m alembic -c alembic.ini -x url=sqlite:////tmp/rehearsal.db downgrade -1
+python -m alembic -c alembic.ini -x url=sqlite:////tmp/rehearsal.db upgrade head
+```
+
+Rules: revision ids are `NNNN_slug` (the file is named after the id: `alembic.ini` sets
+`file_template = %(rev)s`), every revision has a working `downgrade()`, and
+`tests/test_migrations.py` fails when the models and the migrations disagree (`compare_metadata`
+after `upgrade head` must be empty), so add a revision in the same change as the model edit. SQLite
+cannot alter or drop columns in place, so a revision that changes or drops a column uses
+`op.batch_alter_table`, which recreates the table; adding a column (`0002`) is a plain `ALTER`.
+
+Startup migrations are serialised: on SQLite the hub takes the write lock before inspecting the schema
+(`BEGIN IMMEDIATE`, 30 s `busy_timeout`), on PostgreSQL it holds a transaction advisory lock, so two
+hub processes or a hub and a manual `alembic upgrade` starting together wait for each other instead
+of one crashing on "table already exists". On SQLite the runtime also switches `PRAGMA foreign_keys`
+off for the migration: a batch recreate (`DROP TABLE` + rename) would otherwise cascade-delete every
+child row. Only hub tables are inspected; the main API's tables on a shared `DATABASE_URL` are never
+mistaken for drift.
+
+## Security on `/auth`
+
+`POST /auth/login`, `/auth/register` and `/auth/push-token` go through an in-process sliding-window
+limiter (`ratelimit.py`, one instance per runtime): `HUB_LOGIN_PER_IP_PER_MINUTE`,
+`HUB_LOGIN_PER_ACCOUNT_PER_MINUTE`, `HUB_REGISTER_PER_IP_PER_HOUR`,
+`HUB_PUSH_TOKEN_PER_USER_PER_MINUTE`, and `HUB_LOGIN_LOCKOUT_THRESHOLD` consecutive failed logins
+on one e-mail within `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` lock it for `HUB_LOGIN_LOCKOUT_SECONDS`
+whatever the client address (anyone who knows the e-mail can cause that bounded 15-minute denial;
+issued tokens keep working; a per-address lock would let a LAN guesser rotate addresses and raise the
+budget against a weak password fifteenfold, so it was rejected).
+Over-limit requests answer `429` and locked accounts `423`, both with a `Retry-After` header and a
+`detail` object `{"code": "rate_limited" | "account_locked", "message", "retry_after"}`. Unknown
+e-mails are counted, locked and bcrypt-checked exactly like existing ones so nothing reveals which
+accounts exist. The client IP is the TCP peer unless `HUB_TRUST_PROXY_HEADERS=true` (then the *last*
+`X-Forwarded-For` entry when it is a valid IP address: the one your proxy added for the peer it saw,
+e.g. nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`; set the flag only when the
+hub is reachable through that proxy alone). Counters are per process: Raspberry Pi
+hubs run one uvicorn worker; a multi-worker deployment needs a shared store (Redis) behind the same
+interface before the limits mean anything globally.
+
+## App/hub contract
+
+- `GET /health` also returns `hub_version` (= `version`), `api_version` (`"1"`),
+  `min_app_version` (`HUB_MIN_APP_VERSION`; an older app shows its forced-update screen),
+  `flags` (`sos_require_address`, `stream_credentials_to_clients`, `demo_enabled`,
+  `rate_limit_enabled`, `open_registration`), `clock_synced` (system time past the build floor
+  and, when `timedatectl` answers, `NTPSynchronized=yes`; the app hides relative ages when false)
+  and `server_time` (ISO-8601 UTC).
+- `GET /devices/{id}/stream` returns `StreamOut`: `{url, type, headers, auth_required,
+  credentials_included, username, password}`. Camera credentials and any `user:pass@` in the URL
+  are stripped; `auth_required` tells the app the stream needs them. Only with
+  `HUB_STREAM_CREDENTIALS_TO_CLIENTS=true` (the owner accepts that every member's phone receives
+  the camera admin password over the LAN, until the hub stream relay exists) are `username` /
+  `password` filled and `credentials_included` true; the hub logs a warning at startup.
+- `POST /homes/{id}/sos` accepts `address` (free text, 300 chars) and `address_confirmed`. The
+  incident position is the phone position, else the home coordinates, else the Abidjan-Plateau
+  default, reported as `location_source` (`phone|home|default`) and `location_confidence`
+  (`gps|home|none`); a default position prefixes the description with
+  `Position inconnue (defaut Abidjan-Plateau) - `. With `SAFER_SOS_REQUIRE_ADDRESS=true` an SOS
+  that would use the default is refused with `422 {"detail": {"code": "position_required",
+  "message"}}` unless `address` is given and `address_confirmed` is true; nothing is created then.
 
 ## Environment variables (`settings.py`)
 
@@ -57,6 +150,16 @@ injectable connector. Each test gets a fresh in-memory SQLite database (`tests/c
 | `HUB_WEATHER_ENABLED` | `true` | Open-Meteo weather on `GET /homes/{id}/weather` |
 | `HUB_DEMO_ENABLED` | `true` | Expose the `demo` brand (virtual devices) |
 | `HUB_ALLOW_OPEN_REGISTRATION` | `true` | Allow `POST /auth/register` after the first user |
+| `HUB_MIN_APP_VERSION` | `0.2.0` | Oldest app version served, announced on `/health` |
+| `HUB_AUTO_MIGRATE` | `true` | Run Alembic `upgrade head` on startup (see *Migrations*) |
+| `SAFER_SOS_REQUIRE_ADDRESS` | `false` | Refuse an SOS without phone/home position unless the user confirmed an address (422 `position_required`) |
+| `HUB_STREAM_CREDENTIALS_TO_CLIENTS` | `false` | Include camera credentials in `GET /devices/{id}/stream` (LAN risk, logged at startup) |
+| `HUB_RATE_LIMIT_ENABLED` | `true` | Rate limits + lockout on `/auth` |
+| `HUB_TRUST_PROXY_HEADERS` | `false` | Take the client IP from the first `X-Forwarded-For` entry (only behind a trusted proxy) |
+| `HUB_LOGIN_PER_IP_PER_MINUTE` / `HUB_LOGIN_PER_ACCOUNT_PER_MINUTE` | `10` / `5` | Login attempts allowed per minute |
+| `HUB_REGISTER_PER_IP_PER_HOUR` | `5` | Registrations per client IP per hour |
+| `HUB_PUSH_TOKEN_PER_USER_PER_MINUTE` | `10` | Push-token registrations per user per minute |
+| `HUB_LOGIN_LOCKOUT_THRESHOLD` / `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` / `HUB_LOGIN_LOCKOUT_SECONDS` | `5` / `900` / `900` | Consecutive failures within the window that lock an account, and for how long (423 `account_locked`) |
 | `MATTER_SERVER_URL` | `ws://localhost:5580/ws` | python-matter-server WebSocket URL |
 | `SAFER_INCIDENTS_URL` / `SAFER_INCIDENTS_TOKEN` | `""` | Forward SOS alerts to SafeR CI incidents (fire-and-forget) |
 
@@ -100,4 +203,7 @@ Adapter errors are raised as `AdapterError(message, code=...)` and mapped by the
    import list in `adapters/__init__.py`.
 3. Add `tests/test_<brand>.py` mocking the device/cloud with `httpx.MockTransport` and realistic
    sample responses (pairing, refresh, commands, error mapping).
-4. Run `pytest app/hub/tests -q` and `pylint --rcfile=.pylintrc app/hub`.
+4. Run `pytest app/hub/tests -q` and `pylint --rcfile=.pylintrc app/hub`. Never put secrets in
+   `DeviceDraft.config`/`state` or `IntegrationDraft.config` (the app reads them): credentials go in
+   `credentials` (encrypted at rest) and stream credentials in `StreamInfo.username`/`password`, which
+   the API strips before answering the app.

@@ -147,8 +147,8 @@ class _HubUrlSheetState extends ConsumerState<HubUrlSheet> {
             const SizedBox(height: 6),
             Text(
               context.tr(
-                fr: "Adresse du hub auquel l'application se connecte (ex. http://192.168.1.20:8000).",
-                en: 'Address of the hub the app connects to (e.g. http://192.168.1.20:8000).',
+                fr: "Adresse du hub auquel l'application se connecte (ex. http://safer-hub.local:8000 ou https://…).",
+                en: 'Address of the hub the app connects to (e.g. http://safer-hub.local:8000 or https://…).',
               ),
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),

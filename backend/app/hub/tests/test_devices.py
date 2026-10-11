@@ -421,7 +421,10 @@ async def test_stream_and_snapshot(client, auth, devices):
     headers = auth["headers"]
     main = await client.get(f"{PREFIX}/devices/{camera['id']}/stream", headers=headers)
     assert main.status_code == 200, main.text
-    assert main.json() == {"url": "rtsp://demo.safer.local:554/cam1/main", "type": "rtsp", "headers": {}, "username": None, "password": None}
+    assert main.json() == {
+        "url": "rtsp://demo.safer.local:554/cam1/main", "type": "rtsp", "headers": {},
+        "auth_required": False, "credentials_included": False, "username": None, "password": None,
+    }
     sub = await client.get(f"{PREFIX}/devices/{camera['id']}/stream", params={"quality": "sub"}, headers=headers)
     assert sub.json()["url"].endswith("/cam1/sub")
     assert (await client.get(f"{PREFIX}/devices/{camera['id']}/stream", params={"quality": "4k"}, headers=headers)).status_code == 422

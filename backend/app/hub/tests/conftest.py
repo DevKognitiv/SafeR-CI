@@ -19,8 +19,12 @@ PREFIX = "/api/v1/hub"
 
 
 def make_settings(**overrides) -> HubSettings:
-    """Settings for tests (no background services, no weather calls)."""
-    values = {"SECRET_KEY": "test-secret-key", "HUB_WEATHER_ENABLED": False, "HUB_SIA_PORT": 0}
+    """Settings for tests (no background services, no weather calls, ``create_all`` instead of migrations).
+
+    ``HUB_AUTO_MIGRATE`` is off so every test gets its tables from ``create_all`` in milliseconds; the Alembic
+    path has its own tests (``test_migrations.py``).
+    """
+    values = {"SECRET_KEY": "test-secret-key", "HUB_WEATHER_ENABLED": False, "HUB_SIA_PORT": 0, "HUB_AUTO_MIGRATE": False}
     values.update(overrides)
     return HubSettings(**values)
 

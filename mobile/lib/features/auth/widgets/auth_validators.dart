@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../../core/hub_url_policy.dart';
 import '../../../core/i18n.dart';
 
 /// Minimum password length accepted by the hub (`RegisterIn.password`).
@@ -60,14 +61,22 @@ class AuthValidators {
     return '+225$digits';
   }
 
+  /// Hub base URL: `http(s)://host[:port]`, and plain http only on the local
+  /// network (see [HubUrlPolicy]).
   static String? hubUrl(BuildContext context, String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return context.tr(fr: "Saisissez l'URL du hub", en: 'Enter the hub URL');
-    final uri = Uri.tryParse(v);
-    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https') || uri.host.isEmpty) {
-      return context.tr(fr: 'URL invalide (ex. http://192.168.1.20:8000)', en: 'Invalid URL (e.g. http://192.168.1.20:8000)');
+    switch (HubUrlPolicy.check(v)) {
+      case HubUrlVerdict.ok:
+        return null;
+      case HubUrlVerdict.insecurePublic:
+        return context.tr(
+          fr: 'Utilisez https:// pour un hub public (http uniquement sur le réseau local)',
+          en: 'Use https:// for a public hub (http only on the local network)',
+        );
+      case HubUrlVerdict.invalid:
+        return context.tr(fr: 'URL invalide (ex. http://safer-hub.local:8000)', en: 'Invalid URL (e.g. http://safer-hub.local:8000)');
     }
-    return null;
   }
 
   /// Trimmed URL without trailing slashes.

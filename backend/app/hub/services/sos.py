@@ -7,10 +7,18 @@ banner), posts a critical *alarm* message, publishes ``sos.raised`` on the bus a
 it runs in a background task (``runtime.spawn``) with its own session so the panic button answers immediately;
 network/HTTP failures are logged and the alert simply stays ``forwarded=False``. ``GET /homes/{id}/sos`` shows
 ``forwarded``/``incident_id`` once the platform answered.
+
+Position resolution (``resolve_position``): phone (``lat``/``lon`` of the alert) > home (``Home.lat``/``lon``)
+> default (Abidjan-Plateau). The default can send responders to the wrong place, so with
+``SAFER_SOS_REQUIRE_ADDRESS`` an SOS that would use it is refused (:class:`PositionRequired`, HTTP 422
+``position_required``) unless the user gave and confirmed a free-text address; nothing is created in that case.
+The incident payload always carries ``location_source``/``location_confidence`` and, when the default is used,
+its description starts with ``UNKNOWN_POSITION_PREFIX``.
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import httpx
@@ -23,7 +31,11 @@ from app.hub.services.device_service import DeviceService
 
 logger = logging.getLogger("safer.hub.sos")
 
-__all__ = ["raise_sos", "forward_sos", "forward_later", "build_incident_payload", "DEFAULT_LAT", "DEFAULT_LON", "SOS_TITLE"]
+__all__ = [
+    "raise_sos", "forward_sos", "forward_later", "build_incident_payload", "resolve_position", "is_fix", "Position",
+    "PositionRequired", "DEFAULT_LAT", "DEFAULT_LON", "SOS_TITLE", "UNKNOWN_POSITION_PREFIX",
+    "LOCATION_PHONE", "LOCATION_HOME", "LOCATION_DEFAULT",
+]
 
 # Abidjan (Plateau) — used when neither the phone nor the home has a position.
 DEFAULT_LAT = 5.36
@@ -32,6 +44,38 @@ HUB_ID = "safer-hub"
 SOURCE = "mobile_app"
 SOS_TITLE = "🆘 SOS déclenché"
 CONTEXT_BRAND = "sos"
+
+LOCATION_PHONE = "phone"
+LOCATION_HOME = "home"
+LOCATION_DEFAULT = "default"
+CONFIDENCE = {LOCATION_PHONE: "gps", LOCATION_HOME: "home", LOCATION_DEFAULT: "none"}
+UNKNOWN_POSITION_PREFIX = "Position inconnue (defaut Abidjan-Plateau) - "
+POSITION_REQUIRED_CODE = "position_required"
+POSITION_REQUIRED_MESSAGE = "Position inconnue: confirmez une adresse ou un repère avant d'envoyer le SOS"
+
+
+@dataclass(frozen=True)
+class Position:
+    """Resolved incident position and where it came from."""
+
+    lat: float
+    lon: float
+    source: str  # phone | home | default
+
+    @property
+    def confidence(self) -> str:
+        """``gps`` (phone), ``home`` (home coordinates) or ``none`` (default)."""
+        return CONFIDENCE[self.source]
+
+
+class PositionRequired(Exception):
+    """No usable position and ``SAFER_SOS_REQUIRE_ADDRESS`` is on: the SOS is refused before anything is created."""
+
+    code = POSITION_REQUIRED_CODE
+
+    def __init__(self, message: str = POSITION_REQUIRED_MESSAGE):
+        super().__init__(message)
+        self.message = message
 
 
 def _device_service(runtime: Any) -> DeviceService:
@@ -46,28 +90,45 @@ def _display_name(user: User) -> str:
     return (getattr(user, "name", "") or "").strip() or getattr(user, "email", "") or "Un membre"
 
 
-def _pick(*values: Optional[float], default: float) -> float:
-    for value in values:
-        if value is not None:
-            return float(value)
-    return default
+def is_fix(lat: Optional[float], lon: Optional[float]) -> bool:
+    """A usable coordinate pair: both present and not the ``(0, 0)`` "no fix" sentinel phones and panels emit."""
+    return lat is not None and lon is not None and not (float(lat) == 0.0 and float(lon) == 0.0)
+
+
+def resolve_position(lat: Optional[float], lon: Optional[float], home: Home) -> Position:
+    """Phone position when it is a fix, else the home's, else the Abidjan-Plateau default (never mixes sources)."""
+    if is_fix(lat, lon):
+        return Position(float(lat), float(lon), LOCATION_PHONE)
+    if is_fix(home.lat, home.lon):
+        return Position(float(home.lat), float(home.lon), LOCATION_HOME)
+    return Position(DEFAULT_LAT, DEFAULT_LON, LOCATION_DEFAULT)
 
 
 def build_incident_payload(home: Home, user: User, alert: SosAlert, incident_type: str = "panic") -> Dict[str, Any]:
-    """Incident body sent to the SafeR CI platform (position: phone > home > Abidjan)."""
-    return {
+    """Incident body sent to the SafeR CI platform (position: phone > home > Abidjan, flagged by ``location_source``)."""
+    position = resolve_position(alert.lat, alert.lon, home)
+    description = (alert.note or "").strip() or "SOS SafeR app"
+    if position.source == LOCATION_DEFAULT:
+        description = UNKNOWN_POSITION_PREFIX + description
+    payload: Dict[str, Any] = {
         "incident_type": incident_type or "panic",
         "severity": "critical",
-        "location_lat": _pick(alert.lat, home.lat, default=DEFAULT_LAT),
-        "location_lon": _pick(alert.lon, home.lon, default=DEFAULT_LON),
+        "location_lat": position.lat,
+        "location_lon": position.lon,
+        "location_source": position.source,
+        "location_confidence": position.confidence,
         "source": SOURCE,
-        "description": (alert.note or "").strip() or "SOS SafeR app",
+        "description": description,
         "hub_id": HUB_ID,
         "triggered_by": getattr(user, "email", None),
         "home_id": home.id,
         "home_name": home.name,
         "sos_id": alert.id,
     }
+    address = (getattr(alert, "address", None) or "").strip()
+    if address:
+        payload["address"] = address
+    return payload
 
 
 def _extract_incident_id(response: httpx.Response) -> Optional[str]:
@@ -134,11 +195,37 @@ async def forward_later(runtime: Any, alert_id: str, user: User, incident_type: 
         return await forward_sos(runtime, session, home, user, alert, incident_type)
 
 
+def _position_details(position: Position, address: Optional[str]) -> list:
+    if position.source == LOCATION_PHONE:
+        details = [f"Position: {position.lat:.5f}, {position.lon:.5f}"]
+    elif position.source == LOCATION_HOME:
+        details = ["Position: celle du domicile."]
+    else:
+        details = ["Position inconnue."]
+    if address:
+        details.append(f"Adresse: {address}")
+    return details
+
+
 async def raise_sos(runtime: Any, session: AsyncSession, home: Home, user: User, body: SosIn) -> SosAlert:
-    """Create an SOS alert: trip the home alarm, post an alarm message, publish ``sos.raised`` and queue forwarding."""
+    """Create an SOS alert: trip the home alarm, post an alarm message, publish ``sos.raised`` and queue forwarding.
+
+    Raises :class:`PositionRequired` (nothing created) when the hub requires an address and none was confirmed.
+    """
+    user_id = getattr(user, "id", None)
+    position = resolve_position(body.lat, body.lon, home)
+    address = (body.address or "").strip() or None
+    confirmed = bool(body.address_confirmed and address)
+    if position.source == LOCATION_DEFAULT and getattr(runtime.settings, "SAFER_SOS_REQUIRE_ADDRESS", False) and not confirmed:
+        logger.warning("SOS refused in home %s by user %s: no phone/home position and no confirmed address", home.id, user_id)
+        raise PositionRequired()
+    if confirmed:
+        # The confirmation is the user's assertion, nothing the hub can verify: record who asserted it.
+        logger.info("SOS in home %s: address confirmed by user %s (user-asserted, not verified)", home.id, user_id)
+
     alert = SosAlert(
-        home_id=home.id, user_id=getattr(user, "id", None), lat=body.lat, lon=body.lon,
-        note=(body.note or "").strip() or None, status="open",
+        home_id=home.id, user_id=user_id, lat=body.lat, lon=body.lon,
+        note=(body.note or "").strip() or None, address=address, status="open",
     )
     session.add(alert)
     was_active = bool(home.alarm_active)
@@ -149,8 +236,7 @@ async def raise_sos(runtime: Any, session: AsyncSession, home: Home, user: User,
     details = [f"{who} a déclenché un SOS depuis l'application SafeR."]
     if alert.note:
         details.append(f"Message: {alert.note}")
-    if alert.lat is not None and alert.lon is not None:
-        details.append(f"Position: {alert.lat:.5f}, {alert.lon:.5f}")
+    details.extend(_position_details(position, address))
     service = _device_service(runtime)
     await service.create_message(session, home.id, "alarm", SOS_TITLE, " ".join(details), severity="critical", publish=True)
     await session.commit()
@@ -159,12 +245,15 @@ async def raise_sos(runtime: Any, session: AsyncSession, home: Home, user: User,
     await bus.publish(
         ev.HubEvent(
             ev.SOS_RAISED, home_id=home.id,
-            payload={"sos_id": alert.id, "lat": alert.lat, "lon": alert.lon, "user_id": alert.user_id, "note": alert.note},
+            payload={
+                "sos_id": alert.id, "lat": alert.lat, "lon": alert.lon, "user_id": alert.user_id, "note": alert.note,
+                "address": alert.address, "location_source": position.source,
+            },
         )
     )
     if not was_active:
         await bus.publish(ev.HubEvent(ev.SECURITY_ALARM, home_id=home.id, payload={"active": True, "sos_id": alert.id}))
-    logger.warning("SOS %s raised in home %s by %s", alert.id, home.id, getattr(user, "email", "?"))
+    logger.warning("SOS %s raised in home %s by %s (position: %s)", alert.id, home.id, getattr(user, "email", "?"), position.source)
 
     if (getattr(runtime.settings, "SAFER_INCIDENTS_URL", "") or "").strip():
         # Fire-and-forget: the request session closes with the response, so the task opens its own.
