@@ -67,6 +67,8 @@ def analyse(aab: Path) -> dict:
             if len(parts) < 2:
                 continue
             module = parts[0]
+            if module in {"META-INF", "BUNDLE-METADATA"}:  # bundletool metadata, not feature modules
+                continue
             result["modules"].add(module)
             if module != "base":
                 continue
@@ -110,10 +112,12 @@ def main() -> int:
     if not aab.exists():
         print(f"AAB not found: {aab}")
         return 2
-    budget = {}
     budget_path = Path(args.budget)
-    if budget_path.exists():
-        budget = json.loads(budget_path.read_text())
+    if not budget_path.exists():
+        # A wrong path must not silently turn every gate off.
+        print(f"budget file not found: {budget_path}")
+        return 2
+    budget = json.loads(budget_path.read_text())
     res = analyse(aab)
     failures: list[str] = []
     lines = [f"# App bundle report: {aab.name}", "", f"- Bundle size: {human(res['aab_bytes'])} ({res['aab_bytes']} bytes)", f"- Modules: {', '.join(res['modules'])}"]

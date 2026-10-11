@@ -3,8 +3,9 @@
 Manual screen-reader pass for the six key screens, ticked per screen before sign-off
 (`docs/qa/screen-rubric.md` §5). Automated guideline tests (`meetsGuideline` with
 `androidTapTargetGuideline`, `textContrastGuideline`, `labeledTapTargetGuideline`) run in CI on
-every interactive screen; this page covers what those tests cannot: announcement wording,
-focus order, live regions and the SOS semantic action.
+Home in Phase 0 (`a11y-baseline.md`); every interactive screen is a Phase 1 exit criterion.
+This page covers what those tests cannot: announcement wording, focus order, live regions and
+the SOS semantic action.
 
 Language: TalkBack is set to French for the fr pass and English for the en pass; both are
 required for Login, Home, Security and SOS, French only for the pairing wizard and device panel.

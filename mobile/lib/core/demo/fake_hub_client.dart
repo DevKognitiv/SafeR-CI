@@ -79,7 +79,7 @@ class FakeHubClient extends HubClient {
   @override
   Future<AuthResult> login({required String email, required String password}) async {
     if (failNetwork) throw ApiException('Impossible de joindre le hub', status: null);
-    if (password != 'secret123') throw ApiException('Invalid credentials', status: 401);
+    if (password != 'secret123') throw ApiException('Invalid e-mail or password', status: 401); // the hub's text
     authenticated = true;
     return AuthResult(token: 'test-token', user: user);
   }

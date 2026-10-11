@@ -40,13 +40,13 @@ void main() {
       await tester.enterText(find.byKey(const Key('login-password')), 'wrong-password');
       await tester.tap(find.text('Se connecter'));
       await settle(tester);
-      expect(find.text('Invalid credentials'), findsOneWidget);
+      expect(find.text('Invalid e-mail or password'), findsOneWidget);
       expect(container.read(authProvider).status, AuthStatus.unauthenticated);
-      expect(container.read(authProvider).error, 'Invalid credentials');
+      expect(container.read(authProvider).error, 'Invalid e-mail or password');
 
       await tester.tap(find.byTooltip('Fermer'));
       await tester.pump();
-      expect(find.text('Invalid credentials'), findsNothing);
+      expect(find.text('Invalid e-mail or password'), findsNothing);
       expect(container.read(authProvider).error, isNull);
     });
 

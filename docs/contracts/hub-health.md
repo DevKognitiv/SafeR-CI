@@ -57,7 +57,7 @@ and a missing `timedatectl` contributes nothing.
 | Flag | Setting | App behaviour |
 |---|---|---|
 | `sos_require_address` | `SAFER_SOS_REQUIRE_ADDRESS` | When true and the phone has no position, the SOS screen asks for an address or landmark and a confirmation **before** sending; otherwise the hub would answer `422 position_required` (§4). |
-| `stream_credentials_to_clients` | `HUB_STREAM_CREDENTIALS_TO_CLIENTS` | When false (default) camera credentials never reach the phone; the camera panel uses the snapshot path and shows the "Lecture vidéo indisponible" chip for protected cameras until the Phase 3 stream relay exists (§3). |
+| `stream_credentials_to_clients` | `HUB_STREAM_CREDENTIALS_TO_CLIENTS` | When false (default) camera credentials never reach the phone; the camera panel uses the snapshot path and shows the "Flux protégé : la lecture directe est désactivée…" overlay for protected cameras until the Phase 3 stream relay exists (§3). |
 | `demo_enabled` | `HUB_DEMO_ENABLED` | Show the "Appareils de démonstration" brand in the catalogue. |
 | `rate_limit_enabled` | `HUB_RATE_LIMIT_ENABLED` | Informational; the app always handles `429`/`423` (§5). |
 | `open_registration` | `HUB_ALLOW_OPEN_REGISTRATION` | Show or hide "Créer un compte" on the login screen; the hub answers `403` to `/auth/register` when closed. |
@@ -108,7 +108,8 @@ Returns `StreamOut`:
 
 Default: **no credentials leave the hub.** The app's `StreamInfo.directPlaybackAllowed` is
 `!auth_required || hasCredentials`; when it is false the camera panel does not open the player
-and shows the "Lecture vidéo indisponible" chip with the snapshot button still working. The
+and shows the "Flux protégé : la lecture directe est désactivée…" overlay (key `stream-protected`)
+over the hub snapshot, which keeps refreshing. The
 Phase 3 hub-side relay (signed short-lived stream tokens) replaces this with a playable URL for
 every member regardless of role. The owner may set the flag on a trusted LAN deployment,
 accepting that every member's phone receives the camera password.
@@ -141,7 +142,7 @@ consecutive failed logins within 15 min for 15 min.
 |---|---|---|---|
 | 429 | `{"detail": {"code": "rate_limited", "message": "Trop de tentatives, réessayez dans quelques instants", "retry_after": 42}}` | `Retry-After: 42` | Disable the submit button for `retry_after` seconds with a countdown; message key `auth.rate_limited`. Never retried automatically. |
 | 423 | `{"detail": {"code": "account_locked", "message": "Compte temporairement verrouillé après plusieurs échecs de connexion", "retry_after": 900}}` | `Retry-After: 900` | Same, with the lock message (key `auth.account_locked`) and a "Mot de passe oublié ?" hint once that flow exists. |
-| 401 | `{"detail": "Invalid credentials"}` | — | "E-mail ou mot de passe incorrect". |
+| 401 | `{"detail": "Invalid e-mail or password"}` | — | "E-mail ou mot de passe incorrect". |
 | 403 | `{"detail": "Registration is closed on this hub"}` | — | Hide the register form; the login screen reads `flags.open_registration` first. |
 
 The app maps `detail.code` to its own strings and never shows the hub's `message` verbatim;

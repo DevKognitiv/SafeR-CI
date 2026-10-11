@@ -148,7 +148,7 @@ string_to_sign = timestamp + "\n" + nonce + "\n" + METHOD + "\n" + path_with_que
 |---|---|
 | `kind` | One of `security.alarm`, `security.cleared`, `sos.raised`, `sos.updated`, `device.event`, `message.new`. Anything else: `400 unknown_kind`. |
 | `home_id`, `event_id`, `ts` | Required. `event_id` is the hub's event id; the app deduplicates WebSocket and push deliveries by it. |
-| `seq` | Optional monotonic sequence number of the hub event bus, so the app can detect gaps and resync (`/homes/{id}/activity?since=`). |
+| `seq` | Optional monotonic sequence number of the hub event bus, so the app can detect gaps and resync (proposed `/homes/{id}/activity?since=` hub route, Phase 3). |
 | `priority` | `high` only for `security.alarm`, `sos.raised`, `sos.updated`; the relay downgrades anything else to `normal` and reports `priority_downgraded` in the result. |
 | `ttl_seconds` | 0–86400; default 600 for alarm kinds, 3600 otherwise. |
 | `targets` | 1–500 tokens. Tokens are used for this delivery and are not stored (a salted hash is kept in the delivery log, §7). |
@@ -344,7 +344,7 @@ The operator console can lower a hub's quotas or revoke it when a hub misbehaves
 - `sos_fallback` notes are kept for **7 days** for abuse investigation, then purged; the
   destination number is kept hashed with the last two digits in clear for support.
 - The relay runs in-country where a provider exists (`docs/architecture.md`, "Data locality"),
-  otherwise in the nearest region, documented in `docs/store/data-safety.md`.
+  otherwise in the nearest region, to be documented in `docs/store/data-safety.md` (Phase 5).
 - Hubs can ask `DELETE /hubs/{hub_id}/data` (signed, owner-initiated from the app's account
   deletion flow) to purge every record for that hub ahead of the retention window.
 

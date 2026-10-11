@@ -76,12 +76,14 @@ adb shell cmd uimode night yes                      # dark mode (no restores)
 adb shell "setprop persist.sys.locale en-US; setprop ctl.restart zygote"   # locale (reboots the UI; prefer the in-app language setting)
 adb shell settings put global animator_duration_scale 0   # disableAnimations equivalent
 
-# Force the app into a matrix state through the debug hooks (debug/profile builds only)
-adb shell am start -n $PKG/.MainActivity --es safer_state offline-cached --es safer_route /security
+# Proposed (Phase 1): force a matrix state through intent extras in a demo build
+adb shell am start -n $PKG/.MainActivity --es safer_state offline --es safer_route /security
 ```
 
-The `safer_state` / `safer_route` extras are the same hooks the Playwright harness uses as
-query strings; the app ignores them in release builds.
+The `safer_state` / `safer_route` extras are not implemented yet. Today the forced states exist
+only as query-string hooks of the web demo build (`screenshot-harness.md`); an Android demo
+build (`--dart-define=SAFER_DEMO=1`) starts on Home in the default state. Wiring the same
+`DemoOptions` to intent extras is a Phase 1 item; they stay ignored in release builds.
 
 ### Performance capture
 
@@ -119,8 +121,10 @@ values behind the median.** The web-profile `perf_budget_test` is a regression p
 
 ## 4. Firebase Test Lab
 
-CI runs the instrumentation smoke script when the `FIREBASE_TEST_LAB_SA` secret is present and
-skips with a visible notice otherwise. By hand:
+CI runs a robo crawl (`gcloud firebase test android run --type robo`) of the demo debug APK on
+an Android 10 and an Android 14 image when the `FIREBASE_TEST_LAB_SA` / `FIREBASE_PROJECT_ID`
+secrets are present and skips with a visible notice otherwise; the instrumentation smoke script
+below is a later addition. By hand:
 
 ```bash
 gcloud auth activate-service-account --key-file=sa.json

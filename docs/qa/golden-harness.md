@@ -155,15 +155,14 @@ four diagnostic images per variant. The edit was then reverted from a byte copy
 
 ## 7. CI
 
-The `mobile` job of `.github/workflows/safer-hub-ci.yml` already runs `flutter test`, which
-includes the goldens and the accessibility tests. Two explicit steps give them their own
-signal and keep the diagnostics when they fail:
+The `mobile` job of `.github/workflows/safer-hub-ci.yml` runs the suite in two steps so the
+goldens have their own signal and keep their diagnostics when they fail:
 
 ```yaml
+      - name: Test (unit, widget and accessibility guidelines)
+        run: flutter test --exclude-tags golden
       - name: Golden tests (pixel truth, 0.1 % tolerance)
         run: flutter test --tags golden test/goldens
-      - name: Accessibility guideline tests
-        run: flutter test test/a11y
       - name: Upload golden failure diffs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -173,18 +172,12 @@ signal and keep the diagnostics when they fail:
           if-no-files-found: ignore
 ```
 
+The accessibility guideline tests (`test/a11y/`) are untagged and run inside the first step.
+The `golden` tag is declared in `mobile/dart_test.yaml`, so `--tags` / `--exclude-tags` work
+without the "tag was used that wasn't specified" warning.
+
 Roboto comes from the SDK cache that `subosito/flutter-action` populates (`flutter pub get`
 downloads the `material_fonts` artifact). Running on a runner image whose engine differs from
 the committed goldens shows up as a drift under the tolerance or as a clear failure, never as
-a silent pass.
-
-Known nit: `@Tags(['golden'])` without a `mobile/dart_test.yaml` declaring the tag prints
-`Warning: A tag was used that wasn't specified in dart_test.yaml.` once per run. Adding
-
-```yaml
-tags:
-  golden:
-    description: Pixel goldens (flutter test --tags golden)
-```
-
-to `mobile/dart_test.yaml` silences it.
+a silent pass; the first runs on `ubuntu-latest` matched the goldens captured in the
+development container byte for byte.

@@ -47,7 +47,8 @@ relay contracts the states refer to).
 
 ## Rules that apply across the folder
 
-- A route or matrix state without a golden fails CI.
+- The committed goldens fail CI when they drift; a route or matrix state without a golden
+  fails CI once the matrix walker lands (`state-matrix.md` §11, Phase 1).
 - Red is for alarm, SOS and destructive confirmations only; every status colour has a glyph
   and a word; the colour-vision step checks it on every variant.
 - Performance numbers read "pending hardware" until the trace behind them is committed and

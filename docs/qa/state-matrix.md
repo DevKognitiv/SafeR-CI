@@ -1,9 +1,11 @@
 # State matrix — the coverage contract for goldens
 
 Every route in `mobile/lib/core/routes.dart` is listed here with every state it must render.
-This file is the enumeration the golden job and the Playwright capture job read: **a route or a
-state marked `exists` without a golden fails CI; a state marked `missing` is a Phase 1/2
-backlog item with its French copy decided here, not in the PR that implements it.**
+This file is the enumeration the golden job and the Playwright capture job are meant to read.
+Today CI enforces the **committed** goldens only (`flutter test --tags golden test/goldens`,
+Home in eight variants, see `golden-harness.md`); the matrix walker that fails CI for an
+`exists` cell without a golden is a proposed job (§11). **A state marked `missing` is a
+Phase 1/2 backlog item with its French copy decided here, not in the PR that implements it.**
 
 Cells are written as of the Phase 0 foundations branch (2026-10-11):
 
@@ -52,7 +54,7 @@ offline / device removed while open** (device panels).
 | offline-local | n/a | n/a | n/a | n/a |
 | offline-cached | missing (cold start must render the cached Home; today splash waits on `/auth/me` then falls to login) | n/a | n/a | n/a |
 | stale | n/a | n/a | n/a | n/a |
-| error | exists (`failNetwork` → login with "Impossible de joindre le hub") | exists (`failNetwork`; wrong password shows the hub text "Invalid credentials" verbatim, copy fix pending: "E-mail ou mot de passe incorrect") | exists (`taken@safer.ci` → "E-mail already registered" verbatim, copy pending) | exists (probe false → "Hub injoignable"; public `http://` → "Connexion non sécurisée refusée : utilisez https") |
+| error | exists (`failNetwork` → login with "Impossible de joindre le hub") | exists (`failNetwork`; wrong password shows the hub text "Invalid e-mail or password" verbatim, copy fix pending: "E-mail ou mot de passe incorrect") | exists (`taken@safer.ci` → "E-mail already registered" verbatim, copy pending) | exists (probe false → "Hub injoignable"; public `http://` → validator message "Utilisez https:// pour un hub public (http uniquement sur le réseau local)"; "Connexion non sécurisée refusée : utilisez https" is the `HubClient` refusal when a request would carry a secret anyway) |
 | session expired | missing (silent redirect; `authenticated: false`) | missing ("Session expirée" explanation on arrival) | n/a | n/a |
 | hub version mismatch | missing (`healthOverride`) | missing | missing | missing (show `hub_version` after a probe) |
 | maintenance | missing | missing | missing | missing |
@@ -223,7 +225,7 @@ Resolved by `DeviceResolver` (home → device list → device). Columns are the 
 | text scale 2.0 | missing (big power button + sliders) | missing | missing | missing | missing (state words "OUVERT"/"FERMÉ" are ALL-CAPS today, to be sentence-cased) | missing (chips "MOUVEMENT"/"CALME" ALL-CAPS today) | missing ("VERROUILLÉE"/"OUVERTE" ALL-CAPS today) | missing ("ALARME DÉCLENCHÉE" ALL-CAPS today) | missing | missing | missing |
 | device offline | exists (`offlineIds` → `DeviceOfflineBanner` "Appareil hors ligne" + "Dernière activité…" + Actualiser; "Appareil toujours hors ligne" after refresh) | exists | exists | exists | exists | exists | exists | exists | exists | exists | exists (online chip "EN LIGNE"/"HORS LIGNE", ALL-CAPS today) |
 | device removed while open | missing (`deleteDevice` from another client → 404 on refresh; must show "Appareil supprimé" and pop) | missing | missing | missing | missing | missing | missing | missing | missing | missing | exists for own delete ("Appareil supprimé" then pop) |
-| protected stream (no credentials) | n/a | n/a | n/a | n/a | n/a | exists (`protectedStreams: true` → "Lecture vidéo indisponible" chip, snapshot still works) | n/a | n/a | n/a | n/a | n/a |
+| protected stream (no credentials) | n/a | n/a | n/a | n/a | n/a | exists (`protectedStreams: true` → "Flux protégé : la lecture directe est désactivée…" overlay, key `stream-protected`, over the hub snapshot) | n/a | n/a | n/a | n/a | n/a |
 
 ## 10. Switches to add to the fakes (Phase 0 Lane A backlog)
 
@@ -248,9 +250,15 @@ added to `FakeHubClient` (shared) unless noted:
 
 ## 11. Reading this file from CI
 
-The golden job walks sections 2–9, builds the Cartesian product of `exists` cells × variants
-and fails when a golden file is absent under `mobile/test/goldens/<route>/<state>/<variant>.png`.
-A new route in `routes.dart` without a section here, or a cell flipped from `missing` to
-`exists` in a PR without its goldens, fails the same job. The Playwright capture job uses the
-same list for the Demo-brand web build and stores PNGs under
-`mobile/tool/screenshots/out/<route>/<state>/<variant>.png` as a CI artifact.
+Today (Phase 0): the `mobile` job runs the committed goldens
+(`mobile/test/goldens/<screen>/<theme>_<locale>_<scale>.png`, `golden-harness.md` §4) and the
+`mobile-screenshots` job captures the ten reference screens in their default state from
+`mobile/tool/screenshots/routes.json` into
+`mobile/tool/screenshots/out/<screen>/<theme>-<locale>-<scale>-<w>x<h>.png` as a CI artifact
+(`screenshot-harness.md`).
+
+Proposed (Phase 1, with the first screen PRs): a matrix walker that reads sections 2–9, builds
+the Cartesian product of `exists` cells × variants, fails when a golden is absent for one of
+them, and fails for a new route in `routes.dart` without a section here or for a cell flipped
+from `missing` to `exists` without its goldens. The capture job then takes its state list from
+the same sections through the `state=` hook instead of `routes.json`.
