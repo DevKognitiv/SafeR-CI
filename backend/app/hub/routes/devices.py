@@ -14,12 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.hub.adapters.base import AdapterError, StreamInfo
+from app.hub.adapters.base import AdapterError
 from app.hub.capabilities import coerce_value, find_capability
 from app.hub.deps import DeviceAccess, HomeAccess, device_access, get_db, home_access
 from app.hub.models import Device, DeviceEvent, Room
 from app.hub.runtime import get_runtime
-from app.hub.schemas import CommandsIn, DeviceEventOut, DeviceOut, DeviceUpdate
+from app.hub.schemas import CommandsIn, DeviceEventOut, DeviceOut, DeviceUpdate, StreamOut
 from app.hub.services.device_service import DeviceService
 
 logger = logging.getLogger("safer.hub.routes.devices")
@@ -164,17 +164,27 @@ async def send_commands(
     return device_to_out(device)
 
 
-@router.get("/devices/{device_id}/stream", response_model=StreamInfo)
+@router.get("/devices/{device_id}/stream", response_model=StreamOut)
 async def device_stream(
     quality: str = Query(default="main", pattern="^(main|sub)$"),
     ctx: DeviceAccess = Depends(device_access),
     db: AsyncSession = Depends(get_db),
-) -> StreamInfo:
-    """How to play the main/sub stream of a camera (404 when the device has no stream)."""
+) -> StreamOut:
+    """How to play the main/sub stream of a camera (404 when the device has no stream).
+
+    Camera credentials (``username``/``password`` and any ``user:pass@`` in the URL) are stripped unless the
+    owner set ``HUB_STREAM_CREDENTIALS_TO_CLIENTS``; ``auth_required`` tells the app the stream needs them.
+    """
     info = await _device_service().stream(db, ctx.device, quality)
     if info is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No stream available for this device")
-    return info
+    include = bool(get_runtime().settings.HUB_STREAM_CREDENTIALS_TO_CLIENTS)
+    out = StreamOut.from_info(info, include_credentials=include)
+    if out.credentials_included:
+        logger.warning(
+            "Stream credentials of device %s sent to user %s (HUB_STREAM_CREDENTIALS_TO_CLIENTS)", ctx.device.id, ctx.access.user.id
+        )
+    return out
 
 
 @router.get(

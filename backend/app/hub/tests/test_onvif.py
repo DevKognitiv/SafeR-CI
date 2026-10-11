@@ -14,7 +14,7 @@ import pytest
 from app.hub.adapters.base import AdapterContext, AdapterError, DeviceRef
 from app.hub.adapters.onvif import (
     BRAND_ID, METHOD_IP, NS_MEDIA, NS_PTZ, PROTOCOL, OnvifAdapter, build_security_header, fault_to_error,
-    format_created, parse_host, parse_soap, password_digest, rebase_url, with_credentials,
+    format_created, parse_host, parse_soap, password_digest, rebase_url, strip_userinfo, with_credentials,
 )
 from app.hub.adapters.registry import registry
 
@@ -531,6 +531,25 @@ async def test_ptz_unsupported_without_ptz_service():
     with pytest.raises(AdapterError) as excinfo:
         await adapter.send_command(ref, "ptz", "left", ctx)
     assert excinfo.value.code == "unsupported"
+
+
+async def test_pair_never_stores_advertised_credentials_in_state():
+    """Some cameras advertise ``rtsp://user:pass@host/...``: state is member-readable, so the userinfo must go."""
+    camera = FakeOnvifCamera(advertised_host=f"admin:Sec%20ret%2F123@{HOST}")
+    adapter = OnvifAdapter()
+    ctx = ctx_for(camera)
+    draft = (await adapter.pair(METHOD_IP, payload(), ctx)).devices[0]
+    assert draft.state["stream_main"] == f"rtsp://{HOST}:554/h265Preview_01_main"
+    assert draft.state["stream_sub"] == f"rtsp://{HOST}:554/h264Preview_01_sub"
+    assert draft.state["snapshot"].startswith(f"http://{HOST}:{PORT}/")
+    assert "@" not in draft.config["media_xaddr"]
+    assert "Sec" not in repr(draft.state) and "Sec" not in repr(draft.config)
+    # playback still gets the configured credentials, once, from ``stream()``
+    main = await adapter.stream(device_ref(draft), "main", ctx)
+    assert main.url == f"rtsp://admin:Sec%20ret%2F123@{HOST}:554/h265Preview_01_main"
+    assert strip_userinfo(main.url) == draft.state["stream_main"]
+    assert strip_userinfo("rtsp://u:p@[fe80::1]:554/a?x=1") == "rtsp://[fe80::1]:554/a?x=1"
+    assert strip_userinfo("rtsp://cam/a") == "rtsp://cam/a"
 
 
 async def test_stream_injects_credentials():

@@ -154,6 +154,22 @@ def rebase_url(url: str, host: str, port: Optional[int] = None) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
+def strip_userinfo(url: str) -> str:
+    """Drop any ``user:pass@`` a camera embedded in an advertised URL.
+
+    Advertised URIs are persisted in ``Device.state`` (readable by every member of the home), so credentials must
+    never travel with them; ``stream()`` injects the configured credentials when a player needs them.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if "@" not in parts.netloc:
+        return url
+    netloc = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
 def with_credentials(url: str, username: str, password: str) -> str:
     """Insert ``user:pass@`` into a URL (RTSP players expect inline credentials)."""
     if not username:
@@ -333,8 +349,8 @@ class OnvifSession:
         return build_security_header(self.username, self.password, created=created)
 
     def rebase(self, url: str, http: bool = False) -> str:
-        """Point an advertised URL at the configured host (HTTP URLs also take the configured port)."""
-        return rebase_url(url, self.host, self.port if http else None)
+        """Point an advertised URL at the configured host (HTTP URLs also take the configured port), credentials dropped."""
+        return strip_userinfo(rebase_url(url, self.host, self.port if http else None))
 
 
 class OnvifClient:

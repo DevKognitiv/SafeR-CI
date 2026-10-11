@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.hub.adapters.base import BrandInfo, DiscoveredDevice, StreamInfo  # noqa: F401  # pylint: disable=unused-import
 from app.hub.capabilities import CATEGORIES, SECURITY_MODES
@@ -240,6 +241,56 @@ class DeviceEventOut(ORMModel):
     type: str
     payload: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+# Request headers that carry credentials: stripped from client-facing stream descriptors like username/password.
+SENSITIVE_STREAM_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie", "x-api-key", "x-auth-token"})
+
+
+def split_userinfo(url: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """``(url without userinfo, username, password)`` -- ``rtsp://u:p@cam/x`` -> ``("rtsp://cam/x", "u", "p")``."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url, None, None
+    if "@" not in parts.netloc:
+        return url, None, None
+    userinfo, _, hostport = parts.netloc.rpartition("@")
+    user, has_password, password = userinfo.partition(":")
+    clean = urlunsplit((parts.scheme, hostport, parts.path, parts.query, parts.fragment))
+    return clean, unquote(user) or None, unquote(password) if has_password else None
+
+
+class StreamOut(BaseModel):
+    """Client-facing stream descriptor (``GET /devices/{id}/stream``).
+
+    Camera credentials never leave the hub by default: ``username``/``password`` and any ``user:pass@`` embedded
+    in the URL are stripped (``auth_required`` tells the app that the stream needs them). Only when the owner sets
+    ``HUB_STREAM_CREDENTIALS_TO_CLIENTS`` are they included, with ``credentials_included`` set to true.
+    """
+
+    url: str
+    type: str = "rtsp"  # rtsp|hls|mjpeg|webrtc|http
+    headers: Dict[str, str] = Field(default_factory=dict)
+    auth_required: bool = False
+    credentials_included: bool = False
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    @classmethod
+    def from_info(cls, info: StreamInfo, include_credentials: bool = False) -> "StreamOut":
+        """Build the public descriptor from the adapter's ``StreamInfo`` (left untouched)."""
+        url, url_user, url_password = split_userinfo(info.url)
+        username = info.username or url_user
+        password = info.password if info.password is not None else url_password
+        headers = dict(info.headers or {})
+        sensitive = {k: v for k, v in headers.items() if k.lower() in SENSITIVE_STREAM_HEADERS}
+        auth_required = bool(username or password is not None or sensitive)
+        if include_credentials and auth_required:
+            return cls(url=url, type=info.type, headers=headers, auth_required=True, credentials_included=True,
+                       username=username, password=password)
+        safe_headers = {k: v for k, v in headers.items() if k.lower() not in SENSITIVE_STREAM_HEADERS}
+        return cls(url=url, type=info.type, headers=safe_headers, auth_required=auth_required)
 
 
 # --- Onboarding -----------------------------------------------------------------
@@ -482,10 +533,32 @@ class SecurityOut(BaseModel):
 
 
 class SosIn(BaseModel):
-    lat: Optional[float] = None
-    lon: Optional[float] = None
+    """Body of ``POST /homes/{id}/sos``.
+
+    ``lat``/``lon`` are the phone position (both or neither). ``address`` is a free-text address or landmark and
+    ``address_confirmed`` is the user's assertion that help is needed there; the hub cannot verify it, so with
+    ``SAFER_SOS_REQUIRE_ADDRESS`` an SOS without any position is refused (422 ``position_required``) unless the
+    address is given and confirmed.
+    """
+
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lon: Optional[float] = Field(default=None, ge=-180, le=180)
     note: Optional[str] = Field(default=None, max_length=1000)
-    incident_type: str = "panic"
+    incident_type: str = Field(default="panic", max_length=40)
+    address: Optional[str] = Field(default=None, max_length=300)
+    address_confirmed: bool = False
+
+    @field_validator("address")
+    @classmethod
+    def _address(cls, value: Optional[str]) -> Optional[str]:
+        cleaned = " ".join((value or "").split())
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def _position(self) -> "SosIn":
+        if (self.lat is None) != (self.lon is None):
+            raise ValueError("lat and lon must be given together")
+        return self
 
 
 class SosOut(ORMModel):
@@ -495,6 +568,7 @@ class SosOut(ORMModel):
     lat: Optional[float] = None
     lon: Optional[float] = None
     note: Optional[str] = None
+    address: Optional[str] = None
     status: str = "open"
     forwarded: bool = False
     incident_id: Optional[str] = None
@@ -521,8 +595,21 @@ class UnreadCountOut(BaseModel):
 
 
 class HealthOut(BaseModel):
+    """``GET /health``: liveness plus the app/hub version negotiation contract.
+
+    The app compares its own version with ``min_app_version`` (forced-update screen when older), reads ``flags``
+    to adapt its flows (e.g. ask for an address before an SOS when ``sos_require_address`` is on) and hides
+    relative ages when ``clock_synced`` is false.
+    """
+
     status: str = "ok"
     version: str
     adapters: List[str] = Field(default_factory=list)
     sia_receiver: bool = False
     categories: List[str] = Field(default_factory=lambda: list(CATEGORIES))
+    hub_version: str
+    api_version: str = "1"
+    min_app_version: str = "0.2.0"
+    flags: Dict[str, bool] = Field(default_factory=dict)
+    clock_synced: bool = True
+    server_time: str  # ISO-8601 UTC, e.g. 2026-10-11T12:00:00Z
