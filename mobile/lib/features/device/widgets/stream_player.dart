@@ -13,13 +13,18 @@ import 'device_providers.dart';
 
 /// What the camera surface has to render.
 class CameraSurfaceRequest {
-  const CameraSurfaceRequest({required this.snapshotUrl, required this.headers, this.info, this.loading = false});
+  const CameraSurfaceRequest({required this.snapshotUrl, required this.headers, this.info, this.loading = false, this.snapshotOnly = false});
 
-  /// Stream descriptor; null while it is being fetched (or failed).
+  /// Stream descriptor; null while it is being fetched, when it failed or when
+  /// the stream is protected ([snapshotOnly]).
   final StreamInfo? info;
   final String snapshotUrl;
   final Map<String, String> headers;
   final bool loading;
+
+  /// The stream is protected and its credentials stayed on the hub: no player,
+  /// the surface keeps the hub snapshot fresh instead.
+  final bool snapshotOnly;
 }
 
 typedef CameraSurfaceBuilder = Widget Function(BuildContext context, CameraSurfaceRequest request);
@@ -30,7 +35,8 @@ final cameraSurfaceBuilderProvider = Provider<CameraSurfaceBuilder>((_) => (cont
 
 /// 16:9 player area: fetches the stream descriptor for [quality] and delegates rendering
 /// to [cameraSurfaceBuilderProvider]; shows an error overlay with retry when the hub
-/// cannot provide a stream.
+/// cannot provide a stream, and a snapshot-only fallback when the stream is protected
+/// and the hub kept the camera credentials ([StreamInfo.directPlaybackAllowed]).
 class StreamPlayer extends ConsumerWidget {
   const StreamPlayer({super.key, required this.device, required this.quality});
 
@@ -61,7 +67,15 @@ class StreamPlayer extends ConsumerWidget {
                 _StreamErrorOverlay(error: error, onRetry: () => ref.invalidate(cameraStreamProvider(key))),
               ],
             ),
-            data: (info) => builder(context, CameraSurfaceRequest(snapshotUrl: snapshotUrl, headers: headers, info: info)),
+            data: (info) => info.directPlaybackAllowed
+                ? builder(context, CameraSurfaceRequest(snapshotUrl: snapshotUrl, headers: headers, info: info))
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      builder(context, CameraSurfaceRequest(snapshotUrl: snapshotUrl, headers: headers, snapshotOnly: true)),
+                      const _ProtectedStreamOverlay(),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -77,7 +91,7 @@ class _StreamErrorOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final message = error.toString().replaceFirst(RegExp(r'^ApiException\([^)]*\): '), '');
+    final message = localizedErrorMessage(context, error);
     return ColoredBox(
       color: Colors.black54,
       child: Center(
@@ -97,6 +111,41 @@ class _StreamErrorOverlay extends StatelessWidget {
               style: TextButton.styleFrom(foregroundColor: Colors.white),
               icon: const Icon(Icons.refresh, size: 18),
               label: Text(context.tr(fr: 'Réessayer', en: 'Retry')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Explains why a protected stream is not played; the snapshot stays visible underneath.
+class _ProtectedStreamOverlay extends StatelessWidget {
+  const _ProtectedStreamOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        key: const Key('stream-protected'),
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, color: Colors.white70, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                context.tr(
+                  fr: "Flux protégé : la lecture directe est désactivée pour ne pas exposer les identifiants de la caméra. L'aperçu via le hub reste disponible.",
+                  en: 'Protected stream: direct playback is disabled so the camera credentials never leave the hub. The hub snapshot remains available.',
+                ),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -172,10 +221,15 @@ class MediaKitCameraSurface extends StatelessWidget {
     final info = request.info;
     final mjpeg = info != null && (info.type == 'mjpeg' || info.url.toLowerCase().contains('.mjp'));
     final playable = info != null && !mjpeg && info.type != 'webrtc';
+    final refresh = mjpeg
+        ? const Duration(seconds: 2)
+        : request.snapshotOnly
+            ? const Duration(seconds: 5)
+            : null;
     return Stack(
       fit: StackFit.expand,
       children: [
-        SnapshotImage(url: request.snapshotUrl, headers: request.headers, refreshInterval: mjpeg ? const Duration(seconds: 2) : null),
+        SnapshotImage(url: request.snapshotUrl, headers: request.headers, refreshInterval: refresh),
         if (playable) _MediaKitVideo(info: info),
         if (request.loading) const Center(child: CircularProgressIndicator(color: Colors.white70)),
         if (info != null && info.type == 'webrtc')

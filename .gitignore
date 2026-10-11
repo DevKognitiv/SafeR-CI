@@ -241,3 +241,6 @@ mobile/web/.dart_tool/
 
 # SafeR Hub local database
 backend/safer_hub.db
+
+# Golden failure diffs written by the tolerant comparator (uploaded by CI, never committed)
+mobile/test/**/failures/

@@ -117,6 +117,41 @@ void main() {
       await settle(tester);
       expect(container.read(hubUrlProvider), 'http://localhost:8000'); // still untouched
     });
+
+    testWidgets('hub URL sheet requires https for a public hub and accepts the local network', (tester) async {
+      final container = await pumpApp(tester, const LoginScreen(), authenticated: false);
+      await tester.tap(find.byTooltip("Changer l'URL du hub"));
+      await settle(tester);
+
+      await tester.enterText(find.byKey(const Key('hub-url-field')), 'http://hub.example.com');
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pump();
+      expect(find.text('Utilisez https:// pour un hub public (http uniquement sur le réseau local)'), findsOneWidget);
+      expect(find.text('URL du hub'), findsOneWidget); // sheet still open
+      expect(container.read(hubUrlProvider), 'http://localhost:8000');
+
+      await tester.enterText(find.byKey(const Key('hub-url-field')), 'http://192.168.1.20:8000');
+      await tester.tap(find.text('Tester la connexion'));
+      await settle(tester);
+      expect(find.textContaining('Utilisez https://'), findsNothing);
+      expect(find.text('Hub joignable'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('hub-url-field')), 'https://hub.example.com');
+      await tester.tap(find.text('Enregistrer'));
+      await settle(tester);
+      expect(container.read(hubUrlProvider), 'https://hub.example.com');
+      expect(find.text('URL du hub'), findsNothing); // sheet closed
+    });
+
+    testWidgets('hub URL sheet explains the https rule in English too', (tester) async {
+      await pumpApp(tester, const LoginScreen(), authenticated: false, locale: const Locale('en'));
+      await tester.tap(find.byTooltip('Change hub URL'));
+      await settle(tester);
+      await tester.enterText(find.byKey(const Key('hub-url-field')), 'http://hub.example.com:8000');
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+      expect(find.text('Use https:// for a public hub (http only on the local network)'), findsOneWidget);
+    });
   });
 
   group('RegisterScreen', () {

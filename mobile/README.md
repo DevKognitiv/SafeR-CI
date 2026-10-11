@@ -51,11 +51,53 @@ flutter build web --release --dart-define=SAFER_HUB_URL=http://localhost:8000
 ```
 
 The hub URL can also be changed at runtime from the login screen (gear icon in the
-footer) or from *Moi › Paramètres › Hub SafeR*; the value is persisted in
-`SharedPreferences` and overrides the build-time default.
+footer) or from *Moi › Paramètres › Hub SafeR*; the value is persisted in the platform
+secure storage and overrides the build-time default. Plain `http://` is only accepted
+for the local network (see [Security](#security)); a public hub must use `https://`.
 
 Start the hub with `uvicorn app.hub.app:app --host 0.0.0.0 --port 8000` from `backend/`
 (the hub also exposes demo devices when `HUB_DEMO_ENABLED=true`).
+
+## Security
+
+- **Secrets in secure storage.** `lib/core/storage.dart` keeps the session token and
+  the hub URL in `flutter_secure_storage` (Android: keystore-backed
+  EncryptedSharedPreferences; iOS: keychain, `first_unlock`; web: WebCrypto +
+  localStorage). They are read once at startup and cached in memory, so the API stays
+  synchronous. Plain preferences (current home, locale, theme) stay in
+  `SharedPreferences`. A build that still has `safer.token` / `safer.hub_url` in
+  `SharedPreferences` is migrated once at startup (values moved, legacy keys deleted).
+  If the secure-storage plugin throws, the values live in memory for the session and a
+  single warning is logged; the token is never written to plain preferences
+  (`test/storage_test.dart`).
+- **Hub URL policy.** `lib/core/hub_url_policy.dart` (`HubUrlPolicy.check`) accepts
+  `https://` everywhere and `http://` only for loopback (`localhost`, `127.0.0.0/8`,
+  `::1`), the emulator host `10.0.2.2`, RFC 1918 ranges (`10/8`, `172.16/12`,
+  `192.168/16`), link-local (`169.254/16`, `fe80::/10`, `fc00::/7`) and mDNS `*.local`
+  names. The hub URL sheets refuse anything else over http
+  ("Utilisez https:// pour un hub public…"), `HubClient` refuses to send the bearer
+  token or the login password to such a URL (`ApiException` code `insecure_hub_url`,
+  "Connexion non sécurisée refusée : utilisez https") and the realtime socket does not
+  connect to it.
+- **Android transport.** `android:usesCleartextTraffic` is gone;
+  `res/xml/network_security_config.xml` blocks cleartext except to `localhost`,
+  `127.0.0.1`, `10.0.2.2` and `*.local`. Android cannot allow-list RFC 1918 ranges, so
+  a **release** build reaches a LAN hub by its `.local` name (`http://safer-hub.local:8000`)
+  or over https; `src/debug/res/xml/network_security_config.xml` overlays the file in
+  **debug** builds and permits cleartext everywhere, so `flutter run` against
+  `http://192.168.1.20:8000` keeps working. Profile builds use the release file.
+- **Android backups.** `android:allowBackup="false"`, plus `res/xml/backup_rules.xml`
+  (`fullBackupContent`) and `res/xml/data_extraction_rules.xml` (`dataExtractionRules`,
+  Android 12+) excluding shared preferences, databases and the secure-storage files
+  (`FlutterSecureStorage.xml`, `FlutterSecureKeyStorage.xml`).
+- **Package visibility.** The manifest `<queries>` declares `tel:`, `sms:` / `smsto:`,
+  `mailto:`, `https:` intents and `com.whatsapp`, so `url_launcher` can open the dialer,
+  SMS, mail, browser and WhatsApp from the SOS and support screens.
+- **Camera credentials.** `GET /devices/{id}/stream` returns
+  `auth_required` / `credentials_included` (credentials are null by default, they stay on
+  the hub). When a stream is protected and the credentials were not included, the player
+  is not started: the camera panel shows the hub snapshot (refreshed every 5 s) with
+  "Flux protégé : la lecture directe est désactivée…" (`StreamInfo.directPlaybackAllowed`).
 
 ## Testing
 
@@ -75,6 +117,8 @@ harnesses (`*_router.dart`) live next to it.
 | Test file | Covers |
 |-----------|--------|
 | `core_test.dart` | models, hub client, providers |
+| `storage_test.dart` | secure storage: no token in SharedPreferences, legacy migration, fallback |
+| `hub_url_policy_test.dart` | hub URL policy table + `HubClient` transport guard |
 | `auth_test.dart` | splash / login / register, hub URL sheet |
 | `home_test.dart` | home screen, rooms, quick toggles |
 | `add_device_test.dart`, `matter_payload_test.dart` | catalogue, wizard, QR scan, Matter payload parser |
@@ -93,7 +137,8 @@ lib/
     theme.dart                     # SafeRColors + Material 3 light/dark themes
     i18n.dart                      # context.tr(fr:, en:), supported locales
     routes.dart / router.dart      # Routes constants / go_router with auth redirects + shell
-    storage.dart                   # SharedPreferences wrapper (token, home, hub URL, locale, theme)
+    storage.dart                   # secure storage (token, hub URL) + SharedPreferences (home, locale, theme)
+    hub_url_policy.dart            # https required for public hubs, http only on the local network
     api/                           # hub_client.dart (Dio), ws_client.dart, api_exception.dart
     models/                        # hand-written fromJson/toJson models
     providers/                     # Riverpod 2 providers (auth, homes, devices, scenes, security, messages, brands, ws, weather…)

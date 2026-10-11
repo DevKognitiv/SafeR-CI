@@ -518,6 +518,17 @@ void main() {
       expect(find.text('URL du hub enregistrée'), findsOneWidget);
       expect(find.text('http://192.168.1.20:8000'), findsOneWidget);
     });
+
+    testWidgets('the hub URL editor requires https for a public hub', (tester) async {
+      final app = await pumpMe(tester, initialLocation: Routes.settings);
+      await tester.tap(find.byKey(const Key('settings-hub')));
+      await settle(tester);
+      await tester.enterText(find.byKey(const Key('settings-hub-url')), 'http://hub.example.com');
+      await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+      await tester.pump();
+      expect(find.text('Utilisez https:// pour un hub public (http uniquement sur le réseau local)'), findsOneWidget);
+      expect(app.container.read(hubUrlProvider), 'http://localhost:8000');
+    });
   });
 
   group('AboutScreen', () {

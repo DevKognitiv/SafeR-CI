@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules (android:fullBackupContent, Android 6 to 11).
+  android:allowBackup is false, so nothing is backed up anyway; these rules are
+  the safety net if a build ever re-enables it: no preferences (session, home,
+  settings), no databases (future offline cache) and never the secure-storage
+  files (encrypted token and hub URL plus their keystore-wrapped key).
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml" />
+</full-backup-content>

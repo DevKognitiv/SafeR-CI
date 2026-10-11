@@ -317,9 +317,23 @@ class DeviceEvent {
       );
 }
 
-/// How to play a camera stream.
+/// How to play a camera stream (`GET /devices/{id}/stream`).
+///
+/// By default the hub keeps the camera credentials to itself: the descriptor
+/// says whether the stream needs authentication ([authRequired]) and whether
+/// the credentials were included ([credentialsIncluded], `username` /
+/// `password` null otherwise). A protected stream without credentials is not
+/// played directly; the app falls back to the hub snapshot.
 class StreamInfo {
-  const StreamInfo({required this.url, this.type = 'rtsp', this.headers = const {}, this.username, this.password});
+  const StreamInfo({
+    required this.url,
+    this.type = 'rtsp',
+    this.headers = const {},
+    this.username,
+    this.password,
+    this.authRequired = false,
+    this.credentialsIncluded = false,
+  });
 
   final String url;
   final String type;
@@ -327,13 +341,28 @@ class StreamInfo {
   final String? username;
   final String? password;
 
+  /// The camera requires credentials to serve this stream.
+  final bool authRequired;
+
+  /// The hub included the credentials in this descriptor (off by default).
+  final bool credentialsIncluded;
+
   factory StreamInfo.fromJson(Map<String, dynamic> json) => StreamInfo(
         url: json['url'] as String,
         type: (json['type'] as String?) ?? 'rtsp',
         headers: Map<String, String>.from((json['headers'] as Map?) ?? const {}),
         username: json['username'] as String?,
         password: json['password'] as String?,
+        authRequired: json['auth_required'] == true,
+        credentialsIncluded: json['credentials_included'] == true,
       );
+
+  /// Credentials usable by the player are available (flag or explicit username).
+  bool get hasCredentials => credentialsIncluded || (username != null && username!.isNotEmpty);
+
+  /// False when the stream is protected and the credentials stayed on the hub:
+  /// the player must not be started.
+  bool get directPlaybackAllowed => !authRequired || hasCredentials;
 
   /// URL with embedded credentials for players that cannot send auth headers.
   String get authenticatedUrl {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:safer_ci/core/i18n.dart';
 import 'package:safer_ci/core/providers/providers.dart';
@@ -11,6 +12,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'fake_hub_client.dart';
 
 /// Build a ProviderScope with the fake hub client and storage for widget tests.
+///
+/// [theme] defaults to the light theme and [textScaler] to no scaling, so existing tests are
+/// unaffected; goldens pass the dark theme and `TextScaler.linear(2.0)` to cover the matrix.
 Future<ProviderContainer> pumpApp(
   WidgetTester tester,
   Widget child, {
@@ -20,14 +24,15 @@ Future<ProviderContainer> pumpApp(
   List<Override> overrides = const [],
   Locale locale = const Locale('fr'),
   Size size = const Size(400, 800),
+  ThemeData? theme,
+  TextScaler textScaler = TextScaler.noScaling,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
-  SharedPreferences.setMockInitialValues({
-    if (authenticated) 'safer.token': 'test-token',
-    if (homeId != null) 'safer.home_id': homeId,
-  });
+  // Secrets live in secure storage, plain preferences in SharedPreferences.
+  FlutterSecureStorage.setMockInitialValues({if (authenticated) AppStorage.tokenKey: 'test-token'});
+  SharedPreferences.setMockInitialValues({if (homeId != null) 'safer.home_id': homeId});
   final storage = await AppStorage.create();
   final fake = client ?? FakeHubClient(authenticated: authenticated);
   final container = ProviderContainer(overrides: [
@@ -41,7 +46,9 @@ Future<ProviderContainer> pumpApp(
   await tester.pumpWidget(UncontrolledProviderScope(
     container: container,
     child: MaterialApp(
-      theme: SafeRTheme.lightTheme,
+      theme: theme ?? SafeRTheme.lightTheme,
+      // The DEBUG ribbon would otherwise be baked into every golden.
+      debugShowCheckedModeBanner: false,
       locale: locale,
       supportedLocales: kSupportedLocales,
       localizationsDelegates: const [
@@ -49,6 +56,11 @@ Future<ProviderContainer> pumpApp(
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // Applied above the Navigator so dialogs, sheets and snackbars scale with the screen.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+        child: child!,
+      ),
       home: child,
     ),
   ));

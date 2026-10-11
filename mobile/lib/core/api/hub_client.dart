@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../config.dart';
+import '../hub_url_policy.dart';
 import '../models/models.dart';
 import 'api_exception.dart';
 
@@ -20,12 +21,23 @@ class HubClient {
       ..responseType = ResponseType.json;
     _dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
       final token = _tokenProvider();
-      if (token != null && token.isNotEmpty) {
-        options.headers['Authorization'] = 'Bearer $token';
+      final bearer = token != null && token.isNotEmpty;
+      // Defence in depth behind the URL validators: a secret (session token or
+      // login password) never travels in cleartext to a public host.
+      if ((bearer || _carriesPassword(options)) && HubUrlPolicy.check(_baseUrl) == HubUrlVerdict.insecurePublic) {
+        handler.reject(DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: ApiException(kInsecureHubUrlMessageFr, code: kInsecureHubUrlCode),
+        ));
+        return;
       }
+      if (bearer) options.headers['Authorization'] = 'Bearer $token';
       handler.next(options);
     }));
   }
+
+  static bool _carriesPassword(RequestOptions options) => options.path == '/auth/login' || options.path == '/auth/register';
 
   final Dio _dio;
   final TokenProvider _tokenProvider;
@@ -58,6 +70,8 @@ class HubClient {
   }
 
   ApiException _toApiException(DioException e) {
+    final embedded = e.error;
+    if (embedded is ApiException) return embedded;
     final status = e.response?.statusCode;
     final data = e.response?.data;
     String message = e.message ?? 'Network error';
