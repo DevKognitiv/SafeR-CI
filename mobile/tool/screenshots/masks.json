@@ -1,0 +1,50 @@
+{
+  "$comment": "Opaque overlays painted over time-dependent or brand regions before each shot, in CSS px of the viewport (not device px). A value is a number of CSS px or a percentage of the viewport width (x, w) / height (y, h); x may be 'center' to centre a box of width w. Optional filters restrict a mask to some screens, scales ('1.0'), viewports ('360x780'), themes or locales; a mask without a filter applies everywhere.",
+  "masks": [
+    {
+      "name": "sos-button",
+      "screens": [
+        "sos"
+      ],
+      "scales": [
+        "1.0"
+      ],
+      "rect": {
+        "x": "center",
+        "y": 90,
+        "w": 340,
+        "h": 334
+      },
+      "reason": "The SOS button pulses continuously (two expanding rings every 1.8 s); the ring area changes between shots."
+    },
+    {
+      "name": "sos-button",
+      "screens": [
+        "sos"
+      ],
+      "scales": [
+        "2.0"
+      ],
+      "rect": {
+        "x": "center",
+        "y": 104,
+        "w": 340,
+        "h": 348
+      },
+      "reason": "Same button; at text scale 2.0 the title row above it is laid out differently, so the ring sits higher."
+    },
+    {
+      "name": "auth-logo",
+      "screens": [
+        "login"
+      ],
+      "rect": {
+        "x": 0,
+        "y": 36,
+        "w": "100%",
+        "h": 96
+      },
+      "reason": "Brand mark placeholder (the final SafeR logo is a Phase 1 asset): reviewers score the screen, not the glyph. A full-width band because the hero column is only as wide as its tagline today, so the logo's horizontal position moves with locale and text scale."
+    }
+  ]
+}

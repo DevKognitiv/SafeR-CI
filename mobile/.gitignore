@@ -1,0 +1,3 @@
+# Playwright screenshot harness output and its optional local node_modules
+tool/screenshots/out/
+tool/screenshots/node_modules/

@@ -1,0 +1,15 @@
+{
+  "$comment": "The ten reference screens of docs/screenshots/. `route` is the app location passed as ?route= to the demo web build (paths from mobile/lib/core/routes.dart, device ids from DemoHubClient); `states` are DemoState names appended to ?state= (docs/qa/screenshot-harness.md section 3); `tablet: true` adds the 600x960 light/fr/1.0 variant.",
+  "screens": [
+    { "screen": "login", "route": "/login", "states": ["loggedOut"], "reference": "docs/screenshots/login.png" },
+    { "screen": "home", "route": "/", "tablet": true, "reference": "docs/screenshots/home.png" },
+    { "screen": "security", "route": "/security", "tablet": true, "reference": "docs/screenshots/security.png" },
+    { "screen": "sos", "route": "/security/sos", "reference": "docs/screenshots/sos.png" },
+    { "screen": "scenes", "route": "/scenes", "reference": "docs/screenshots/scenes.png" },
+    { "screen": "me", "route": "/me", "reference": "docs/screenshots/me.png" },
+    { "screen": "add-device", "route": "/add-device", "reference": "docs/screenshots/add-device.png" },
+    { "screen": "pair-tuya", "route": "/add-device/tuya", "reference": "docs/screenshots/pair-tuya.png" },
+    { "screen": "device-light", "route": "/devices/dev-light", "reference": "docs/screenshots/device-light.png" },
+    { "screen": "device-camera", "route": "/devices/dev-cam", "reference": "docs/screenshots/device-camera.png" }
+  ]
+}

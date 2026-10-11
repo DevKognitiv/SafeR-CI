@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app.dart';
+import 'core/demo/demo.dart';
 import 'core/providers/providers.dart';
 import 'core/storage.dart';
 
@@ -15,7 +16,11 @@ Future<void> main() async {
   }
   final storage = await AppStorage.create();
   runApp(ProviderScope(
-    overrides: [storageProvider.overrideWithValue(storage)],
+    overrides: [
+      storageProvider.overrideWithValue(storage),
+      // --dart-define=SAFER_DEMO=1: in-memory hub and signed-in demo session.
+      if (kDemoMode) ...bootstrapDemo(),
+    ],
     child: const SafeRApp(),
   ));
 }

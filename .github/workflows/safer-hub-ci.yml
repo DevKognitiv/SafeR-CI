@@ -83,6 +83,43 @@ jobs:
       - name: Build web
         run: flutter build web --release --dart-define=SAFER_HUB_URL=https://api.safer-ci.app
 
+  mobile-screenshots:
+    name: SafeR app (demo web build + Playwright screenshot captures)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.2"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Dependencies
+        run: flutter pub get
+      - name: Build web in demo mode (self-hosted CanvasKit)
+        run: flutter build web --release --dart-define=SAFER_DEMO=1 --no-web-resources-cdn
+      - name: Install Playwright 1.56.1 and Chromium
+        working-directory: mobile/tool/screenshots
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx --no-install playwright install --with-deps chromium
+      - name: Capture the screen matrix (fails on a missing variant or an app error)
+        run: node tool/screenshots/capture.mjs --web-dir=build/web --out=tool/screenshots/out
+      - name: Verify the manifest covers the whole matrix
+        run: node tool/screenshots/capture.mjs --check --out=tool/screenshots/out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-screenshots
+          path: mobile/tool/screenshots/out
+          retention-days: 14
+          if-no-files-found: error
+
   mobile-android:
     name: SafeR app (Android bundle size + 16 KB alignment)
     runs-on: ubuntu-latest
