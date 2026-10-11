@@ -80,12 +80,15 @@ Start the hub with `uvicorn app.hub.app:app --host 0.0.0.0 --port 8000` from `ba
   "Connexion non sécurisée refusée : utilisez https") and the realtime socket does not
   connect to it.
 - **Android transport.** `android:usesCleartextTraffic` is gone;
-  `res/xml/network_security_config.xml` blocks cleartext except to `localhost`,
-  `127.0.0.1`, `10.0.2.2` and `*.local`. Android cannot allow-list RFC 1918 ranges, so
-  a **release** build reaches a LAN hub by its `.local` name (`http://safer-hub.local:8000`)
-  or over https; `src/debug/res/xml/network_security_config.xml` overlays the file in
-  **debug** builds and permits cleartext everywhere, so `flutter run` against
-  `http://192.168.1.20:8000` keeps working. Profile builds use the release file.
+  `res/xml/network_security_config.xml` permits cleartext only to `localhost`,
+  `127.0.0.1`, `10.0.2.2` and `*.local` (Android cannot allow-list RFC 1918 ranges), with
+  `src/debug/res/xml/network_security_config.xml` permitting it everywhere in **debug**
+  builds. That file governs platform HTTP clients (WebView, native plugins) and the Play
+  pre-launch report. The app's own traffic (Dio, the WebSocket, `Image.network`) goes
+  through `dart:io`, which on the current Flutter engine does not consult the config, so
+  `http://192.168.1.20:8000` still works in a release build today; the supported, future-proof
+  form of a LAN hub address is nevertheless its `.local` name (`http://safer-hub.local:8000`)
+  or https, which is what the hub URL sheet suggests.
 - **Android backups.** `android:allowBackup="false"`, plus `res/xml/backup_rules.xml`
   (`fullBackupContent`) and `res/xml/data_extraction_rules.xml` (`dataExtractionRules`,
   Android 12+) excluding shared preferences, databases and the secure-storage files

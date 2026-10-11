@@ -99,9 +99,10 @@ mistaken for drift.
 limiter (`ratelimit.py`, one instance per runtime): `HUB_LOGIN_PER_IP_PER_MINUTE`,
 `HUB_LOGIN_PER_ACCOUNT_PER_MINUTE`, `HUB_REGISTER_PER_IP_PER_HOUR`,
 `HUB_PUSH_TOKEN_PER_USER_PER_MINUTE`, and `HUB_LOGIN_LOCKOUT_THRESHOLD` consecutive failed logins
-on one e-mail *from one client address* within `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` lock that pair for
-`HUB_LOGIN_LOCKOUT_SECONDS` (a stranger's failures never lock the owner out of their own phone; the
-per-account window above is the brake on guessing from many addresses).
+on one e-mail within `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` lock it for `HUB_LOGIN_LOCKOUT_SECONDS`
+whatever the client address (anyone who knows the e-mail can cause that bounded 15-minute denial;
+issued tokens keep working; a per-address lock would let a LAN guesser rotate addresses and raise the
+budget against a weak password fifteenfold, so it was rejected).
 Over-limit requests answer `429` and locked accounts `423`, both with a `Retry-After` header and a
 `detail` object `{"code": "rate_limited" | "account_locked", "message", "retry_after"}`. Unknown
 e-mails are counted, locked and bcrypt-checked exactly like existing ones so nothing reveals which

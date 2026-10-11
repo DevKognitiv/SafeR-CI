@@ -291,40 +291,20 @@ async def test_limiter_is_per_runtime():
         assert (await login(second["client"])).status_code == 200
 
 
-async def test_lockout_is_scoped_to_the_client_address():
-    """A stranger's five wrong passwords lock the stranger, not the owner on their own phone."""
+async def test_lockout_is_per_account_whatever_the_address():
+    """Five failures from a stranger lock the account for everyone for 15 minutes: the documented, bounded trade-off."""
     async with hub(HUB_TRUST_PROXY_HEADERS=True) as h:
         http, clock = h["client"], h["clock"]
         attacker = {"X-Forwarded-For": "203.0.113.66"}
         owner = {"X-Forwarded-For": "198.51.100.7"}
         for _ in range(5):
             assert (await login(http, password="wrong-wrong", headers=attacker)).status_code == 401
-        assert_locked(await login(http, headers=attacker))  # the attacker is locked, right password or not
-        clock.advance(60)  # the stranger can still fill the per-account minute window; that denial ends with it
-        assert (await login(http, headers=owner)).status_code == 200  # the owner is not locked
-        # the owner's own typos still lock the owner's own address (the brake against a local guesser stays)
-        clock.advance(60)
-        for _ in range(5):
-            assert (await login(http, password="typo-typo", headers=owner)).status_code == 401
-        assert_locked(await login(http, headers=owner))
-        clock.advance(900)
+        clock.advance(60)  # past the per-account minute window
+        assert_locked(await login(http, headers=owner), retry_after=840)  # right password, locked all the same
+        clock.advance(840)
         assert (await login(http, headers=owner)).status_code == 200
-        # the per-account window still brakes guessing spread over many addresses: 5 attempts per minute in total
-        clock.advance(60)  # past the owner's successful login above, which counted in the window
+        clock.advance(60)  # the owner's login counted in the per-account minute window
+        # a rotating address does not buy the guesser more than the lock allows
         for i in range(5):
             assert (await login(http, password="guess", headers={"X-Forwarded-For": f"203.0.113.{i}"})).status_code == 401
-        assert_rate_limited(await login(http, password="guess", headers={"X-Forwarded-For": "203.0.113.200"}))
-
-
-async def test_lockout_scope_survives_long_emails():
-    """The composite key must keep its address part even for the longest valid e-mails."""
-    email = "a" * 120 + "@safer.ci"
-    async with hub(HUB_TRUST_PROXY_HEADERS=True) as h:
-        http = h["client"]
-        for _ in range(5):
-            assert (await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "203.0.113.66"})).status_code == 401
-        assert_locked(await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "203.0.113.66"}))
-        h["clock"].advance(60)
-        # another address is not locked (401 = wrong password, not 423)
-        assert (await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "198.51.100.7"})).status_code == 401
-
+        assert_locked(await login(http, password="guess", headers={"X-Forwarded-For": "203.0.113.200"}))

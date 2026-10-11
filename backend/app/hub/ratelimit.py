@@ -15,8 +15,6 @@ interface before the limits mean anything globally.
 """
 from __future__ import annotations
 
-import hashlib
-
 import ipaddress
 import math
 import time
@@ -36,7 +34,6 @@ RATE_LIMITED_MESSAGE = "Trop de tentatives, réessayez dans quelques instants"
 ACCOUNT_LOCKED_MESSAGE = "Compte temporairement verrouillé après plusieurs échecs de connexion"
 UNKNOWN_CLIENT = "unknown"
 MAX_KEY_LENGTH = 128  # keys come from request data (e-mails, forwarded IPs): cap them so they cannot bloat memory
-LOCK_ACCOUNT_MAX_LENGTH = 64  # leaves room for "|" + the longest IPv6 text inside MAX_KEY_LENGTH
 SWEEP_INTERVAL = 60.0
 MINUTE = 60.0
 HOUR = 3600.0
@@ -233,21 +230,17 @@ class AuthThrottle:
             raise rate_limited(wait)
 
     def _lock_key(self, email: str) -> str:
-        """The lock is scoped to the account *and* the client address.
+        """The lock is per account (normalised e-mail), whatever the client address.
 
-        Five wrong passwords from a stranger (or a housemate's typos on another phone) must never lock the owner
-        out of their own device: for a safety app the login is the way back to SOS after a reinstall. The per-account
-        window (``HUB_LOGIN_PER_ACCOUNT_PER_MINUTE``) stays the global brake on guessing from many addresses.
-
-        Long e-mails are hashed so the composite key always keeps its address part within ``MAX_KEY_LENGTH``.
+        Anyone who knows the e-mail can trigger it: a bounded, 15-minute denial surfaced with a countdown, and
+        already issued tokens keep working. Scoping the lock to the client address was considered and rejected:
+        on a LAN a guesser rotates addresses for free, which would raise the budget against a weak password from
+        5 attempts per 15 minutes to 5 per minute (the per-account window alone).
         """
-        account = _normalise(email)
-        if len(account) > LOCK_ACCOUNT_MAX_LENGTH:
-            account = hashlib.sha256(account.encode("utf-8")).hexdigest()[:LOCK_ACCOUNT_MAX_LENGTH]
-        return f"{account}|{self.ip}"
+        return _normalise(email)
 
     def before_login(self, email: str) -> None:
-        """429 over the per-IP / per-account limits, 423 while the account is locked for this client."""
+        """429 over the per-IP / per-account limits, 423 while the account is locked."""
         if not self.enabled:
             return
         self._enforce("login:ip", self.ip, self.settings.HUB_LOGIN_PER_IP_PER_MINUTE, MINUTE)
@@ -257,7 +250,7 @@ class AuthThrottle:
         self._enforce("login:account", email, self.settings.HUB_LOGIN_PER_ACCOUNT_PER_MINUTE, MINUTE)
 
     def login_failed(self, email: str) -> None:
-        """Count a failed attempt; the account locks for this client after ``HUB_LOGIN_LOCKOUT_THRESHOLD`` failures.
+        """Count a failed attempt; the account locks after ``HUB_LOGIN_LOCKOUT_THRESHOLD`` consecutive failures.
 
         Unknown e-mails are counted exactly like existing ones so the lockout cannot be used to enumerate accounts.
         """
@@ -269,7 +262,7 @@ class AuthThrottle:
         )
 
     def login_succeeded(self, email: str) -> None:
-        """Reset the failure counter of ``email`` for this client."""
+        """Reset the failure counter of ``email``."""
         if self.enabled:
             self.limiter.record_success(self._lock_key(email))
 

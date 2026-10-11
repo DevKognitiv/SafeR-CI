@@ -51,7 +51,7 @@ class HubSettings(BaseSettings):
 
     # Rate limiting / lockout on /auth (in-process sliding windows, see ``ratelimit.py``)
     HUB_RATE_LIMIT_ENABLED: bool = True
-    HUB_TRUST_PROXY_HEADERS: bool = False  # take the client IP from X-Forwarded-For (only behind a trusted proxy)
+    HUB_TRUST_PROXY_HEADERS: bool = False  # client IP = last X-Forwarded-For entry (only behind a proxy that adds the peer)
     HUB_LOGIN_PER_IP_PER_MINUTE: int = 10
     HUB_LOGIN_PER_ACCOUNT_PER_MINUTE: int = 5
     HUB_REGISTER_PER_IP_PER_HOUR: int = 5

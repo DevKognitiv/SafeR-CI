@@ -63,18 +63,11 @@ class AuthValidators {
 
   /// Hub base URL: `http(s)://host[:port]`, and plain http only on the local
   /// network (see [HubUrlPolicy]).
-  static String? hubUrl(BuildContext context, String? value, {bool? cleartextToRawIpBlocked}) {
+  static String? hubUrl(BuildContext context, String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return context.tr(fr: "Saisissez l'URL du hub", en: 'Enter the hub URL');
     switch (HubUrlPolicy.check(v)) {
       case HubUrlVerdict.ok:
-        final blocked = cleartextToRawIpBlocked ?? HubUrlPolicy.cleartextToRawIpBlockedByPlatform;
-        if (blocked && HubUrlPolicy.isCleartextRawIp(v)) {
-          return context.tr(
-            fr: 'Sur Android, un hub en http doit être nommé safer-hub.local (ou passer en https)',
-            en: 'On Android an http hub must be reached as safer-hub.local (or over https)',
-          );
-        }
         return null;
       case HubUrlVerdict.insecurePublic:
         return context.tr(

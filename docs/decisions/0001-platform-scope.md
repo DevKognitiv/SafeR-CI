@@ -199,11 +199,17 @@ questions" below).
 
 **Context.** Release and profile builds now ship `res/xml/network_security_config.xml`:
 cleartext HTTP is off by default and allowed only to `localhost`, `127.0.0.1`, `10.0.2.2` and
-`*.local` names. Android cannot express RFC 1918 ranges in a domain config, so a release build
-**cannot reach `http://192.168.1.20:8000`**; it can reach `http://safer-hub.local:8000` or any
-`https://` URL. Debug builds overlay the config and allow cleartext everywhere. The app-side
-policy (`mobile/lib/core/hub_url_policy.dart`) accepts `http://` to private hosts and refuses
-it to public hosts with "Connexion non sécurisée refusée : utilisez https".
+`*.local` names. Android cannot express RFC 1918 ranges in a domain config, so the config
+**does not permit `http://192.168.1.20:8000`**; it permits `http://safer-hub.local:8000` and any
+`https://` URL. Debug builds overlay the config and allow cleartext everywhere. Two facts bound
+the impact today (verified against the Flutter 3.47.2 engine binaries during the Phase 0
+review): the config governs platform HTTP clients (WebView, native plugins) and the Play
+pre-launch report, while the app's own traffic (Dio, the WebSocket, `Image.network`) goes
+through `dart:io`, which the current engine does not subject to it, so a raw LAN IP still works
+in a release build; a future engine may enforce it. The app-side policy
+(`mobile/lib/core/hub_url_policy.dart`) accepts `http://` to private hosts and refuses it to
+public hosts ("Utilisez https:// pour un hub public (http uniquement sur le réseau local)" in
+the sheet, "Connexion non sécurisée refusée : utilisez https" from the client).
 
 **Options.**
 
@@ -222,10 +228,11 @@ LAN (Caddy with Let's Encrypt when the hub has a public name, self-signed plus Q
 otherwise).
 
 **Consequences of A.** Pi image enables Avahi with `safer-hub.local`; the hub-URL sheet
-suggests `.local` names and explains why a raw IP will not work in a release build; the
-onboarding docs (`docs/device-onboarding.md`, `docs/deployment.md`) say the same; a widget test
-covers the rejection of `http://` to a public host; the Play reviewer cross-check expects no
-cleartext warning.
+suggests `.local` names (done in Phase 0) and, once the engine enforces the config, explains
+why a raw IP no longer works in a release build; the onboarding docs
+(`docs/device-onboarding.md`, `docs/deployment.md`) say the same; a widget test covers the
+rejection of `http://` to a public host; the Play reviewer cross-check expects no cleartext
+warning.
 
 **Decision: pending**
 

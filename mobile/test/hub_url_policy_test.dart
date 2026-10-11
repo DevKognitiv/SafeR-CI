@@ -6,10 +6,6 @@ import 'package:safer_ci/core/api/api_exception.dart';
 import 'package:safer_ci/core/api/hub_client.dart';
 import 'package:safer_ci/core/config.dart';
 import 'package:safer_ci/core/hub_url_policy.dart';
-import 'package:safer_ci/features/auth/widgets/auth_validators.dart';
-import 'package:flutter/material.dart';
-
-import 'helpers/pump_app.dart';
 
 /// Adapter that never touches the network: records the request and answers 200.
 class _RecordingAdapter implements HttpClientAdapter {
@@ -174,40 +170,13 @@ void main() {
     });
   });
 
-  group('HubUrlPolicy canonical IPv4 and the platform cleartext rule', () {
+  group('HubUrlPolicy canonical IPv4', () {
     test('leading-zero octets are not private: browsers read them as octal', () {
       expect(HubUrlPolicy.check('http://010.0.0.1'), HubUrlVerdict.insecurePublic);
       expect(HubUrlPolicy.check('http://192.168.01.1'), HubUrlVerdict.insecurePublic);
       expect(HubUrlPolicy.check('http://0177.0.0.1'), HubUrlVerdict.insecurePublic);
       expect(HubUrlPolicy.check('http://192.168.0.1'), HubUrlVerdict.ok);
       expect(HubUrlPolicy.check('http://10.0.0.1'), HubUrlVerdict.ok);
-    });
-
-    test('isCleartextRawIp flags http to an IP literal the Android config does not allow', () {
-      expect(HubUrlPolicy.isCleartextRawIp('http://192.168.1.20:8000'), isTrue);
-      expect(HubUrlPolicy.isCleartextRawIp('http://10.1.2.3'), isTrue);
-      expect(HubUrlPolicy.isCleartextRawIp('http://[fe80::1]:8000'), isTrue);
-      expect(HubUrlPolicy.isCleartextRawIp('http://127.0.0.1:8000'), isFalse);
-      expect(HubUrlPolicy.isCleartextRawIp('http://localhost:8000'), isFalse);
-      expect(HubUrlPolicy.isCleartextRawIp('http://10.0.2.2:8000'), isFalse);
-      expect(HubUrlPolicy.isCleartextRawIp('http://safer-hub.local:8000'), isFalse);
-      expect(HubUrlPolicy.isCleartextRawIp('https://192.168.1.20'), isFalse);
-      expect(HubUrlPolicy.isCleartextRawIp('not a url'), isFalse);
-    });
-
-    testWidgets('the validator explains the Android release rule instead of accepting an unreachable URL', (tester) async {
-      late BuildContext ctx;
-      await pumpApp(tester, Builder(builder: (context) {
-        ctx = context;
-        return const SizedBox();
-      }));
-      expect(AuthValidators.hubUrl(ctx, 'http://192.168.1.20:8000', cleartextToRawIpBlocked: false), isNull);
-      expect(AuthValidators.hubUrl(ctx, 'http://192.168.1.20:8000', cleartextToRawIpBlocked: true), contains('safer-hub.local'));
-      expect(AuthValidators.hubUrl(ctx, 'http://safer-hub.local:8000', cleartextToRawIpBlocked: true), isNull);
-      expect(AuthValidators.hubUrl(ctx, 'https://192.168.1.20', cleartextToRawIpBlocked: true), isNull);
-      expect(AuthValidators.hubUrl(ctx, 'http://10.0.2.2:8000', cleartextToRawIpBlocked: true), isNull);
-      // in tests (a debug build) the platform rule is off, so the LAN example stays accepted
-      expect(AuthValidators.hubUrl(ctx, 'http://192.168.1.20:8000'), isNull);
     });
   });
 

@@ -10,11 +10,14 @@
     - *.local (mDNS names such as safer-hub.local, includeSubdomains).
 
   Android cannot express RFC 1918 ranges (10/8, 172.16/12, 192.168/16) in a
-  domain-config, so in release builds a LAN hub on a raw IP must be reached by
-  its .local name or over https; Phase 4 ships mDNS/QR hub discovery so users
-  never type an IP. Debug builds overlay this file with
-  src/debug/res/xml/network_security_config.xml, which permits cleartext
-  everywhere so developer builds on LAN IPs keep working.
+  domain-config, so the supported form of a LAN hub address is its .local name
+  or https; Phase 4 ships mDNS/QR hub discovery so users never type an IP.
+  This file governs platform HTTP clients (WebView, native plugins) and the
+  Play pre-launch report; the app's own dart:io traffic (Dio, WebSocket,
+  Image.network) is not subject to it on the current Flutter engine, which is
+  why a raw LAN IP still works in release builds today. Debug builds overlay
+  this file with src/debug/res/xml/network_security_config.xml, which permits
+  cleartext everywhere.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">

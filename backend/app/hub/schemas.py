@@ -605,6 +605,9 @@ class SosIn(BaseModel):
     def _position(self) -> "SosIn":
         if (self.lat is None) != (self.lon is None):
             raise ValueError("lat and lon must be given together")
+        if self.lat == 0 and self.lon == 0:
+            # The (0, 0) "no fix" sentinel is not a position: store nothing, so SosOut, the event and the app agree.
+            self.lat = self.lon = None
         return self
 
 

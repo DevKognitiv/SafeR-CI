@@ -797,6 +797,7 @@ async def test_sos_zero_coordinates_fall_back_to_the_home(incidents):
     home = incidents["home"]
     response = await raise_sos_http(incidents, home["id"], {"lat": 0, "lon": 0})
     assert response.status_code == 201, response.text
+    assert response.json()["lat"] is None and response.json()["lon"] is None  # nothing pretends to be a fix
     sent = await last_incident(incidents)
     assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0)
     assert sent["location_source"] == "home" and sent["location_confidence"] == "home"
