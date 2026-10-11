@@ -36,7 +36,11 @@ class SecurityFakeHubClient extends FakeHubClient {
   /// Status overrides applied by [updateSos].
   final Map<String, String> sosStatus = {};
   final List<({String id, String status})> updateSosCalls = [];
-  final List<({double? lat, double? lon, String? note})> sosCalls = [];
+  final List<({double? lat, double? lon, String? note, String? address, bool addressConfirmed})> sosCalls = [];
+
+  /// Mirrors the hub with `SAFER_SOS_REQUIRE_ADDRESS=true` on a home without coordinates: an alert
+  /// without a fix is refused with `422 position_required` until an address is given and confirmed.
+  bool requireAddress = false;
 
   Device _open(Device d) {
     if (!openIds.contains(d.id)) return d;
@@ -109,10 +113,16 @@ class SecurityFakeHubClient extends FakeHubClient {
   }
 
   @override
-  Future<SosAlert> raiseSos(String homeId, {double? lat, double? lon, String? note, String incidentType = 'panic'}) async {
-    sosCalls.add((lat: lat, lon: lon, note: note));
-    final a = await super.raiseSos(homeId, lat: lat, lon: lon, note: note, incidentType: incidentType);
-    return SosAlert(id: a.id, homeId: a.homeId, userId: a.userId, lat: a.lat, lon: a.lon, note: a.note, status: a.status, forwarded: sosForwarded, createdAt: a.createdAt);
+  Future<SosAlert> raiseSos(String homeId,
+      {double? lat, double? lon, String? note, String? address, bool addressConfirmed = false, String incidentType = 'panic'}) async {
+    sosCalls.add((lat: lat, lon: lon, note: note, address: address, addressConfirmed: addressConfirmed));
+    final confirmed = addressConfirmed && (address?.trim().isNotEmpty ?? false);
+    if (requireAddress && lat == null && lon == null && !confirmed) {
+      throw ApiException("Position inconnue: confirmez une adresse ou un repère avant d'envoyer le SOS", status: 422, code: 'position_required');
+    }
+    final a = await super.raiseSos(homeId, lat: lat, lon: lon, note: note, address: address, addressConfirmed: addressConfirmed, incidentType: incidentType);
+    return SosAlert(
+        id: a.id, homeId: a.homeId, userId: a.userId, lat: a.lat, lon: a.lon, note: a.note, address: a.address, status: a.status, forwarded: sosForwarded, createdAt: a.createdAt);
   }
 
   @override

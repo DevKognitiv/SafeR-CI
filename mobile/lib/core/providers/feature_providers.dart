@@ -115,8 +115,10 @@ class SecurityNotifier extends FamilyAsyncNotifier<SecurityState, String> {
     ref.read(homesProvider.notifier).patch(arg, (h) => h.copyWith(alarmActive: false));
   }
 
-  Future<SosAlert> raiseSos({double? lat, double? lon, String? note}) async {
-    final alert = await ref.read(hubClientProvider).raiseSos(arg, lat: lat, lon: lon, note: note);
+  Future<SosAlert> raiseSos({double? lat, double? lon, String? note, String? address, bool addressConfirmed = false}) async {
+    final alert = await ref
+        .read(hubClientProvider)
+        .raiseSos(arg, lat: lat, lon: lon, note: note, address: address, addressConfirmed: addressConfirmed);
     await refresh();
     return alert;
   }

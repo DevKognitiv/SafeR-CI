@@ -298,6 +298,38 @@ void main() {
       expect(find.text('Position non disponible'), findsOneWidget);
     });
 
+    testWidgets('asks for a confirmed address when the hub requires a position', (tester) async {
+      final client = SecurityFakeHubClient()..requireAddress = true;
+      final r = await pumpSecurity(tester, const SosScreen(), initialLocation: '/security/sos', location: null, client: client);
+      await tester.tap(find.byType(SosButton));
+      await settle(tester);
+      // Nothing was created; the screen explains and opens the address field.
+      expect(find.text('Position inconnue : indiquez une adresse ou un repère'), findsOneWidget);
+      expect(find.byKey(const Key('sos-address-field')), findsOneWidget);
+      expect(find.byType(SosAlertTile), findsNothing);
+      expect(r.client.sosCalls, hasLength(1));
+      expect(r.client.sosCalls.single.addressConfirmed, isFalse);
+      // The send button needs both an address and the confirmation.
+      final sendButton = find.byKey(const Key('sos-send-with-address'));
+      expect(tester.widget<FilledButton>(sendButton).onPressed, isNull);
+      await tester.enterText(find.byKey(const Key('sos-address-field')), 'Cocody Angré, en face de la pharmacie');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(sendButton).onPressed, isNull);
+      await tester.tap(find.byKey(const Key('sos-address-confirm')));
+      await tester.pump();
+      expect(tester.widget<FilledButton>(sendButton).onPressed, isNotNull);
+      await tester.tap(sendButton);
+      await settle(tester);
+      expect(r.client.sosCalls, hasLength(2));
+      expect(r.client.sosCalls.last.address, 'Cocody Angré, en face de la pharmacie');
+      expect(r.client.sosCalls.last.addressConfirmed, isTrue);
+      expect(find.text('✅ Alerte enregistrée sur le hub'), findsOneWidget);
+      final summary = tester.widget<Text>(find.byKey(const Key('sos-sent-summary'))).data!;
+      expect(summary, contains('Adresse transmise : Cocody Angré, en face de la pharmacie.'));
+      expect(find.byKey(const Key('sos-address-field')), findsNothing);
+      expect(r.client.alarmActive, isTrue);
+    });
+
     testWidgets('renders the emergency numbers and dials them', (tester) async {
       final r = await pumpSecurity(tester, const SosScreen(), initialLocation: '/security/sos');
       expect(find.text("Numéros d'urgence"), findsOneWidget);

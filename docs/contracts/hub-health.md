@@ -125,7 +125,7 @@ Body (`SosIn`): `lat`/`lon` (both or neither), `note` (≤ 1000), `incident_type
 | HTTP | Body | App behaviour |
 |---|---|---|
 | 201 | `SosOut` (`id, home_id, user_id, lat, lon, note, address, status, forwarded, incident_id, created_at`) | "Alerte enregistrée sur le hub"; "Alerte transmise aux secours" once `forwarded` is true on refresh. |
-| 422 | `{"detail": {"code": "position_required", "message": "Position inconnue: confirmez une adresse ou un repère avant d'envoyer le SOS"}}` | Nothing was created. The app opens the address field, asks for confirmation ("Les secours iront à cette adresse") and resends with `address` + `address_confirmed: true`. The app pre-empts this when `flags.sos_require_address` is true and no position is available. |
+| 422 | `{"detail": {"code": "position_required", "message": "Position inconnue: confirmez une adresse ou un repère avant d'envoyer le SOS"}}` | Nothing was created. The app opens the address field, asks for confirmation ("Les secours iront à cette adresse") and resends with `address` + `address_confirmed: true`. Pre-empting the round trip from `flags.sos_require_address` when no position is available is a Phase 2 item (the app does not read the flags yet). |
 | 422 | pydantic validation (for example `lat` without `lon`) | Programming error; shown as a generic failure with retry. |
 | 404 | not a member of the home | Generic failure. |
 

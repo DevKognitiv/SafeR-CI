@@ -148,7 +148,7 @@ offline / device removed while open** (device panels).
 | hub version mismatch | missing (same rule) |
 | maintenance | missing |
 | clock unsynced | missing (alert times are relative) |
-| permission denied | exists (location denied → "Position non disponible : indiquez votre adresse aux secours." via `FixedLocationService(null)`); `422 position_required` handling: missing (raw hub text today; must open the address field) |
+| permission denied | exists (location denied → "Position non disponible : indiquez votre adresse aux secours." via `FixedLocationService(null)`); `422 position_required` handling: exists (`requireAddress` → "Position inconnue : indiquez une adresse ou un repère", address field + "Les secours iront à cette adresse" confirmation, resend with `address_confirmed`) |
 | no SIM / no WhatsApp | exists for the dialer failure ("Impossible d'ouvrir le téléphone pour le 170", `phoneDialer` override); composer/WhatsApp: missing |
 | data-saver interstitial | n/a |
 | alarm for a non-current home | n/a |

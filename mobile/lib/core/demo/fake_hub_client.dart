@@ -412,9 +412,11 @@ class FakeHubClient extends HubClient {
   }
 
   @override
-  Future<SosAlert> raiseSos(String homeId, {double? lat, double? lon, String? note, String incidentType = 'panic'}) async {
+  Future<SosAlert> raiseSos(String homeId,
+      {double? lat, double? lon, String? note, String? address, bool addressConfirmed = false, String incidentType = 'panic'}) async {
     _check();
-    final alert = SosAlert(id: 'sos-${_sos.length + 1}', homeId: homeId, userId: userId, lat: lat, lon: lon, note: note, createdAt: DateTime.now());
+    final alert = SosAlert(
+        id: 'sos-${_sos.length + 1}', homeId: homeId, userId: userId, lat: lat, lon: lon, note: note, address: address, createdAt: DateTime.now());
     _sos.insert(0, alert);
     alarmActive = true;
     return alert;

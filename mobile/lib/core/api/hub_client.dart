@@ -86,10 +86,16 @@ class HubClient {
     final data = e.response?.data;
     String message = e.message ?? 'Network error';
     String? code;
+    int? retryAfter;
     if (data is Map) {
       final detail = data['detail'];
       if (detail is String) {
         message = detail;
+      } else if (detail is Map) {
+        // Structured hub errors: {"detail": {"code": "rate_limited", "message": "...", "retry_after": 42}}
+        message = (detail['message'] ?? detail['detail'] ?? detail['msg'])?.toString() ?? message;
+        code = detail['code'] as String?;
+        retryAfter = (detail['retry_after'] as num?)?.toInt();
       } else if (detail is List && detail.isNotEmpty) {
         final first = detail.first;
         if (first is Map && first['msg'] != null) {
@@ -97,11 +103,12 @@ class HubClient {
           message = loc.isNotEmpty ? '$loc: ${first['msg']}' : first['msg'].toString();
         }
       }
-      code = data['code'] as String?;
+      code ??= data['code'] as String?;
     } else if (status == null) {
       message = 'Impossible de joindre le hub SafeR ($_baseUrl)';
     }
-    return ApiException(message, status: status, code: code);
+    retryAfter ??= int.tryParse(e.response?.headers.value('retry-after') ?? '');
+    return ApiException(message, status: status, code: code, retryAfter: retryAfter);
   }
 
   static Map<String, dynamic> _map(dynamic data) => Map<String, dynamic>.from(data as Map);
@@ -324,8 +331,20 @@ class HubClient {
 
   Future<SecurityState> clearAlarm(String homeId) => _run(() => _dio.post('/homes/$homeId/security/alarm/clear'), (d) => SecurityState.fromJson(_map(d)));
 
-  Future<SosAlert> raiseSos(String homeId, {double? lat, double? lon, String? note, String incidentType = 'panic'}) => _run(
-      () => _dio.post('/homes/$homeId/sos', data: {'lat': lat, 'lon': lon, 'note': note, 'incident_type': incidentType}), (d) => SosAlert.fromJson(_map(d)));
+  /// Raises an SOS. [address] and [addressConfirmed] answer the hub's `422 position_required`
+  /// (no fix, no home position, `SAFER_SOS_REQUIRE_ADDRESS` on): a confirmed address or landmark.
+  Future<SosAlert> raiseSos(String homeId,
+          {double? lat, double? lon, String? note, String? address, bool addressConfirmed = false, String incidentType = 'panic'}) =>
+      _run(
+          () => _dio.post('/homes/$homeId/sos', data: {
+                'lat': lat,
+                'lon': lon,
+                'note': note,
+                'incident_type': incidentType,
+                if (address != null && address.isNotEmpty) 'address': address,
+                if (addressConfirmed) 'address_confirmed': true,
+              }),
+          (d) => SosAlert.fromJson(_map(d)));
 
   Future<List<SosAlert>> sosAlerts(String homeId) => _run(() => _dio.get('/homes/$homeId/sos'), (d) => _list(d).map(SosAlert.fromJson).toList());
 

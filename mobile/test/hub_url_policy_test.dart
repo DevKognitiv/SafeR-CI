@@ -27,6 +27,28 @@ class _RecordingAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Adapter answering a fixed status and JSON body (hub error shapes).
+class _StatusAdapter implements HttpClientAdapter {
+  _StatusAdapter(this.status, this.body, {this.headers = const {}});
+
+  final int status;
+  final String body;
+  final Map<String, List<String>> headers;
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async =>
+      ResponseBody.fromString(body, status, headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+        ...headers,
+      });
+
+  @override
+  void close({bool force = false}) {}
+}
+
+HubClient _clientAnswering(int status, String body, {Map<String, List<String>> headers = const {}}) =>
+    HubClient(baseUrl: 'https://hub.example.com', tokenProvider: () => 'secret-token', dio: Dio()..httpClientAdapter = _StatusAdapter(status, body, headers: headers));
+
 ({HubClient client, _RecordingAdapter adapter}) _clientFor(String baseUrl, {String? token = 'secret-token'}) {
   final adapter = _RecordingAdapter();
   final dio = Dio()..httpClientAdapter = adapter;
@@ -186,6 +208,37 @@ void main() {
       expect(AuthValidators.hubUrl(ctx, 'http://10.0.2.2:8000', cleartextToRawIpBlocked: true), isNull);
       // in tests (a debug build) the platform rule is off, so the LAN example stays accepted
       expect(AuthValidators.hubUrl(ctx, 'http://192.168.1.20:8000'), isNull);
+    });
+  });
+
+  group('HubClient error parsing', () {
+    test('reads the structured throttle and lockout bodies of the hub', () async {
+      final limited = _clientAnswering(429, '{"detail": {"code": "rate_limited", "message": "Trop de tentatives, réessayez dans quelques instants", "retry_after": 42}}',
+          headers: {'retry-after': ['42']});
+      final e = await limited.login(email: 'alice@safer.ci', password: 'x').then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
+      expect(e!.status, 429);
+      expect(e.code, 'rate_limited');
+      expect(e.message, 'Trop de tentatives, réessayez dans quelques instants');
+      expect(e.retryAfter, 42);
+      final locked = _clientAnswering(423, '{"detail": {"code": "account_locked", "message": "Compte temporairement verrouillé", "retry_after": 900}}');
+      final l = await locked.login(email: 'alice@safer.ci', password: 'x').then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
+      expect(l!.code, 'account_locked');
+      expect(l.message, 'Compte temporairement verrouillé');
+      expect(l.retryAfter, 900);
+    });
+
+    test('keeps the plain and validation error shapes', () async {
+      final plain = _clientAnswering(401, '{"detail": "Invalid e-mail or password"}');
+      final p = await plain.login(email: 'alice@safer.ci', password: 'x').then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
+      expect(p!.message, 'Invalid e-mail or password');
+      expect(p.code, isNull);
+      final position = _clientAnswering(422, '{"detail": {"code": "position_required", "message": "Position inconnue"}}');
+      final q = await position.raiseSos('home-1').then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
+      expect(q!.code, 'position_required');
+      expect(q.message, 'Position inconnue');
+      final validation = _clientAnswering(422, '{"detail": [{"loc": ["body", "lat"], "msg": "value is not a valid float", "type": "type_error"}]}');
+      final v = await validation.raiseSos('home-1').then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
+      expect(v!.message, 'lat: value is not a valid float');
     });
   });
 
