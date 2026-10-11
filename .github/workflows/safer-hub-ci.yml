@@ -69,8 +69,17 @@ jobs:
         run: flutter pub get
       - name: Analyze
         run: flutter analyze --fatal-infos
-      - name: Test
-        run: flutter test
+      - name: Test (unit, widget and accessibility guidelines)
+        run: flutter test --exclude-tags golden
+      - name: Golden tests (pixel truth, 0.1 % tolerance)
+        run: flutter test --tags golden test/goldens
+      - name: Upload golden failure diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: mobile/test/**/failures/**
+          if-no-files-found: ignore
       - name: Build web
         run: flutter build web --release --dart-define=SAFER_HUB_URL=https://api.safer-ci.app
 
