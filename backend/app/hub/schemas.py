@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 import re
 
@@ -267,6 +267,28 @@ def split_userinfo(url: str) -> Tuple[str, Optional[str], Optional[str]]:
     return clean, unquote(user) or None, unquote(password) if has_password else None
 
 
+# Query parameters that carry a credential (Home Assistant's camera proxy ``?token=``, signed URLs, API keys).
+SENSITIVE_QUERY_KEYS = frozenset({
+    "token", "access_token", "auth", "authorization", "password", "passwd", "pwd", "pass", "apikey", "api_key",
+    "key", "secret", "sig", "signature", "session", "sessionid", "session_id",
+})
+
+
+def strip_query_secrets(url: str) -> Tuple[str, bool]:
+    """``(url without credential query parameters, whether any were removed)``; other parameters are kept."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url, False
+    if not parts.query:
+        return url, False
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    kept = [(k, v) for k, v in pairs if k.lower() not in SENSITIVE_QUERY_KEYS]
+    if len(kept) == len(pairs):
+        return url, False
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment)), True
+
+
 def scrub_credentials(value: Any) -> Any:
     """``value`` with ``user:pass@`` removed from every URL-shaped string, recursively (dicts and lists).
 
@@ -286,8 +308,9 @@ def scrub_credentials(value: Any) -> Any:
 class StreamOut(BaseModel):
     """Client-facing stream descriptor (``GET /devices/{id}/stream``).
 
-    Camera credentials never leave the hub by default: ``username``/``password`` and any ``user:pass@`` embedded
-    in the URL are stripped (``auth_required`` tells the app that the stream needs them). Only when the owner sets
+    Camera credentials never leave the hub by default: ``username``/``password``, any ``user:pass@`` embedded in
+    the URL, credential query parameters (``?token=`` of a Home Assistant camera proxy, signed URLs) and credential
+    headers are stripped (``auth_required`` tells the app that the stream needs them). Only when the owner sets
     ``HUB_STREAM_CREDENTIALS_TO_CLIENTS`` are they included, with ``credentials_included`` set to true.
     """
 
@@ -303,16 +326,18 @@ class StreamOut(BaseModel):
     def from_info(cls, info: StreamInfo, include_credentials: bool = False) -> "StreamOut":
         """Build the public descriptor from the adapter's ``StreamInfo`` (left untouched)."""
         url, url_user, url_password = split_userinfo(info.url)
+        public_url, query_secret = strip_query_secrets(url)
         username = info.username or url_user
         password = info.password if info.password is not None else url_password
         headers = dict(info.headers or {})
         sensitive = {k: v for k, v in headers.items() if k.lower() in SENSITIVE_STREAM_HEADERS}
-        auth_required = bool(username or password is not None or sensitive)
+        auth_required = bool(username or password is not None or sensitive or query_secret)
         if include_credentials and auth_required:
+            # The query credential is the stream's key: it stays in the URL only on explicit opt-in.
             return cls(url=url, type=info.type, headers=headers, auth_required=True, credentials_included=True,
                        username=username, password=password)
         safe_headers = {k: v for k, v in headers.items() if k.lower() not in SENSITIVE_STREAM_HEADERS}
-        return cls(url=url, type=info.type, headers=safe_headers, auth_required=auth_required)
+        return cls(url=public_url, type=info.type, headers=safe_headers, auth_required=auth_required)
 
 
 # --- Onboarding -----------------------------------------------------------------

@@ -15,6 +15,8 @@ interface before the limits mean anything globally.
 """
 from __future__ import annotations
 
+import hashlib
+
 import ipaddress
 import math
 import time
@@ -34,6 +36,7 @@ RATE_LIMITED_MESSAGE = "Trop de tentatives, réessayez dans quelques instants"
 ACCOUNT_LOCKED_MESSAGE = "Compte temporairement verrouillé après plusieurs échecs de connexion"
 UNKNOWN_CLIENT = "unknown"
 MAX_KEY_LENGTH = 128  # keys come from request data (e-mails, forwarded IPs): cap them so they cannot bloat memory
+LOCK_ACCOUNT_MAX_LENGTH = 64  # leaves room for "|" + the longest IPv6 text inside MAX_KEY_LENGTH
 SWEEP_INTERVAL = 60.0
 MINUTE = 60.0
 HOUR = 3600.0
@@ -235,8 +238,13 @@ class AuthThrottle:
         Five wrong passwords from a stranger (or a housemate's typos on another phone) must never lock the owner
         out of their own device: for a safety app the login is the way back to SOS after a reinstall. The per-account
         window (``HUB_LOGIN_PER_ACCOUNT_PER_MINUTE``) stays the global brake on guessing from many addresses.
+
+        Long e-mails are hashed so the composite key always keeps its address part within ``MAX_KEY_LENGTH``.
         """
-        return f"{_normalise(email)}|{self.ip}"
+        account = _normalise(email)
+        if len(account) > LOCK_ACCOUNT_MAX_LENGTH:
+            account = hashlib.sha256(account.encode("utf-8")).hexdigest()[:LOCK_ACCOUNT_MAX_LENGTH]
+        return f"{account}|{self.ip}"
 
     def before_login(self, email: str) -> None:
         """429 over the per-IP / per-account limits, 423 while the account is locked for this client."""

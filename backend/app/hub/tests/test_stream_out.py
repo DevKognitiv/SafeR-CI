@@ -15,7 +15,7 @@ from app.hub.app import create_app
 from app.hub.capabilities import camera_caps
 from app.hub.runtime import set_runtime
 from app.hub.models import Device
-from app.hub.schemas import DeviceOut, StreamOut, scrub_credentials, split_userinfo
+from app.hub.schemas import DeviceOut, StreamOut, scrub_credentials, split_userinfo, strip_query_secrets
 from app.hub.services.device_service import _serialize_device
 from app.hub.tests.conftest import PREFIX, make_settings, register_user
 
@@ -214,3 +214,24 @@ def test_websocket_device_payload_scrubs_legacy_credentials():
     payload = _serialize_device(device)
     assert payload["state"] == CLEAN_STATE
     assert "s3cret" not in json.dumps(payload)
+
+
+HA_URL = "http://ha.local:8123/api/camera_proxy_stream/camera.porte?token=abc123def&fps=5"
+
+
+def test_strip_query_secrets_keeps_the_other_parameters():
+    assert strip_query_secrets(HA_URL) == ("http://ha.local:8123/api/camera_proxy_stream/camera.porte?fps=5", True)
+    assert strip_query_secrets("rtsp://cam/x?channel=1") == ("rtsp://cam/x?channel=1", False)
+    assert strip_query_secrets("https://cdn/x?Signature=zz&Key-Pair-Id=k") == ("https://cdn/x?Key-Pair-Id=k", True)
+    assert strip_query_secrets("rtsp://cam/x") == ("rtsp://cam/x", False)
+
+
+def test_stream_out_strips_query_credentials_by_default():
+    """A Home Assistant camera proxy URL carries its per-camera token as ``?token=``: a credential like any other."""
+    out = StreamOut.from_info(StreamInfo(url=HA_URL, type="mjpeg"))
+    assert out.url == "http://ha.local:8123/api/camera_proxy_stream/camera.porte?fps=5"
+    assert out.auth_required is True and out.credentials_included is False
+    assert "abc123def" not in out.model_dump_json()
+    opted_in = StreamOut.from_info(StreamInfo(url=HA_URL, type="mjpeg"), include_credentials=True)
+    assert opted_in.url == HA_URL and opted_in.credentials_included is True and opted_in.auth_required is True
+

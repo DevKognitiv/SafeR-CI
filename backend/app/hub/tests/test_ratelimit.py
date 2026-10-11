@@ -314,3 +314,17 @@ async def test_lockout_is_scoped_to_the_client_address():
         for i in range(5):
             assert (await login(http, password="guess", headers={"X-Forwarded-For": f"203.0.113.{i}"})).status_code == 401
         assert_rate_limited(await login(http, password="guess", headers={"X-Forwarded-For": "203.0.113.200"}))
+
+
+async def test_lockout_scope_survives_long_emails():
+    """The composite key must keep its address part even for the longest valid e-mails."""
+    email = "a" * 120 + "@safer.ci"
+    async with hub(HUB_TRUST_PROXY_HEADERS=True) as h:
+        http = h["client"]
+        for _ in range(5):
+            assert (await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "203.0.113.66"})).status_code == 401
+        assert_locked(await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "203.0.113.66"}))
+        h["clock"].advance(60)
+        # another address is not locked (401 = wrong password, not 423)
+        assert (await login(http, email=email, password="wrong-wrong", headers={"X-Forwarded-For": "198.51.100.7"})).status_code == 401
+
