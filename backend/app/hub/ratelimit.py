@@ -195,19 +195,20 @@ def _as_ip(value: str) -> Optional[str]:
 
 
 def client_ip(request: Request, trust_proxy_headers: bool = False) -> str:
-    """Peer address of the request; the first ``X-Forwarded-For`` entry only when a trusted proxy sets it.
+    """Peer address of the request; the *last* ``X-Forwarded-For`` entry only when a trusted proxy sets it.
 
     Without ``trust_proxy_headers`` the header is ignored entirely, so a client cannot spread its attempts over
-    forged addresses or pin them on somebody else's. With it, the entry must parse as an IP address (anything
-    else falls back to the peer), and the proxy must *overwrite* the header with the peer it sees (nginx:
-    ``proxy_set_header X-Forwarded-For $remote_addr``): a proxy that appends would keep a client-chosen first
-    entry, which is exactly the spoofing this flag is supposed to rule out.
+    forged addresses or pin them on somebody else's. With it, the last entry is used: that is the one the proxy
+    in front of the hub added for the peer it saw (nginx ``$proxy_add_x_forwarded_for`` appends it,
+    ``$remote_addr`` overwrites the header with it; both leave it last), whereas the first entry is whatever the
+    client sent. The entry must parse as an IP address (anything else falls back to the peer). The flag means
+    "the hub is only reachable through that proxy": a client that can bypass the proxy could still forge it.
     """
     if trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for", "")
-        first = _as_ip(forwarded.split(",", 1)[0])
-        if first:
-            return first
+        last = _as_ip(forwarded.rsplit(",", 1)[-1])
+        if last:
+            return last
     client = request.client
     if client is not None and client.host:
         return client.host
@@ -228,32 +229,41 @@ class AuthThrottle:
         if wait is not None:
             raise rate_limited(wait)
 
+    def _lock_key(self, email: str) -> str:
+        """The lock is scoped to the account *and* the client address.
+
+        Five wrong passwords from a stranger (or a housemate's typos on another phone) must never lock the owner
+        out of their own device: for a safety app the login is the way back to SOS after a reinstall. The per-account
+        window (``HUB_LOGIN_PER_ACCOUNT_PER_MINUTE``) stays the global brake on guessing from many addresses.
+        """
+        return f"{_normalise(email)}|{self.ip}"
+
     def before_login(self, email: str) -> None:
-        """429 over the per-IP / per-account limits, 423 while the account is locked."""
+        """429 over the per-IP / per-account limits, 423 while the account is locked for this client."""
         if not self.enabled:
             return
         self._enforce("login:ip", self.ip, self.settings.HUB_LOGIN_PER_IP_PER_MINUTE, MINUTE)
-        locked = self.limiter.locked_for(email)
+        locked = self.limiter.locked_for(self._lock_key(email))
         if locked is not None:
             raise account_locked(locked)
         self._enforce("login:account", email, self.settings.HUB_LOGIN_PER_ACCOUNT_PER_MINUTE, MINUTE)
 
     def login_failed(self, email: str) -> None:
-        """Count a failed attempt; the account locks after ``HUB_LOGIN_LOCKOUT_THRESHOLD`` consecutive failures.
+        """Count a failed attempt; the account locks for this client after ``HUB_LOGIN_LOCKOUT_THRESHOLD`` failures.
 
         Unknown e-mails are counted exactly like existing ones so the lockout cannot be used to enumerate accounts.
         """
         if not self.enabled:
             return
         self.limiter.record_failure(
-            email, self.settings.HUB_LOGIN_LOCKOUT_THRESHOLD, float(self.settings.HUB_LOGIN_LOCKOUT_WINDOW_SECONDS),
-            float(self.settings.HUB_LOGIN_LOCKOUT_SECONDS),
+            self._lock_key(email), self.settings.HUB_LOGIN_LOCKOUT_THRESHOLD,
+            float(self.settings.HUB_LOGIN_LOCKOUT_WINDOW_SECONDS), float(self.settings.HUB_LOGIN_LOCKOUT_SECONDS),
         )
 
     def login_succeeded(self, email: str) -> None:
-        """Reset the failure counter of ``email``."""
+        """Reset the failure counter of ``email`` for this client."""
         if self.enabled:
-            self.limiter.record_success(email)
+            self.limiter.record_success(self._lock_key(email))
 
     def before_register(self) -> None:
         """429 over ``HUB_REGISTER_PER_IP_PER_HOUR``."""

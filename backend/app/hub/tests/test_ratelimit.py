@@ -137,11 +137,14 @@ def test_client_ip_trusts_forwarded_header_only_when_told():
         return Request({"type": "http", "method": "POST", "path": "/", "headers": headers, "client": client, "query_string": b""})
 
     assert client_ip(request(("1.2.3.4", 5555), "9.9.9.9, 10.0.0.1")) == "1.2.3.4"
-    assert client_ip(request(("1.2.3.4", 5555), "9.9.9.9, 10.0.0.1"), trust_proxy_headers=True) == "9.9.9.9"
+    # the last entry is the one the trusted proxy appended for the peer it saw; the first is client-chosen
+    assert client_ip(request(("1.2.3.4", 5555), "9.9.9.9, 10.0.0.1"), trust_proxy_headers=True) == "10.0.0.1"
+    assert client_ip(request(("1.2.3.4", 5555), "9.9.9.9,10.0.0.1 , 198.51.100.7"), trust_proxy_headers=True) == "198.51.100.7"
     assert client_ip(request(("1.2.3.4", 5555), "   "), trust_proxy_headers=True) == "1.2.3.4"
     # only real addresses are accepted from the header; junk falls back to the peer (and cannot bloat the keys)
     assert client_ip(request(("1.2.3.4", 5555), "x" * 500), trust_proxy_headers=True) == "1.2.3.4"
-    assert client_ip(request(("1.2.3.4", 5555), "evil@example, 9.9.9.9"), trust_proxy_headers=True) == "1.2.3.4"
+    assert client_ip(request(("1.2.3.4", 5555), "9.9.9.9, evil@example"), trust_proxy_headers=True) == "1.2.3.4"
+    assert client_ip(request(("1.2.3.4", 5555), "evil@example, 9.9.9.9"), trust_proxy_headers=True) == "9.9.9.9"
     assert client_ip(request(("1.2.3.4", 5555), "2001:db8::1"), trust_proxy_headers=True) == "2001:db8::1"
     assert client_ip(request(("1.2.3.4", 5555), "[2001:DB8::1]:443"), trust_proxy_headers=True) == "2001:db8::1"
     assert client_ip(request(("1.2.3.4", 5555), "203.000.113.9"), trust_proxy_headers=True) == "1.2.3.4"
@@ -214,9 +217,14 @@ async def test_forwarded_header_is_ignored_unless_proxy_is_trusted():
         assert_rate_limited(await login(http, email="u99@safer.ci", password="nope-nope", headers={"X-Forwarded-For": "203.0.113.99"}))
     async with hub(HUB_TRUST_PROXY_HEADERS=True) as h:
         http = h["client"]
-        for i in range(12):  # each forwarded address is its own client now
+        # an appending proxy leaves the client-chosen entry first and the real peer last: forging the first
+        # entry does not spread the attempts over new addresses
+        for i in range(10):
             response = await login(http, email=f"u{i}@safer.ci", password="nope-nope", headers={"X-Forwarded-For": f"203.0.113.{i}, 10.0.0.1"})
             assert response.status_code == 401
+        assert_rate_limited(await login(http, email="u99@safer.ci", password="nope-nope", headers={"X-Forwarded-For": "203.0.113.99, 10.0.0.1"}))
+        # nor can it pin the attempts on a victim's address: the victim behind the proxy is a different client
+        assert (await login(http, headers={"X-Forwarded-For": "10.0.0.1, 192.0.2.5"})).status_code == 200
         for i in range(10):
             assert (await login(http, email=f"v{i}@safer.ci", password="nope-nope", headers={"X-Forwarded-For": "198.51.100.7"})).status_code == 401
         assert_rate_limited(await login(http, email="v99@safer.ci", password="nope-nope", headers={"X-Forwarded-For": "198.51.100.7"}))
@@ -281,3 +289,28 @@ async def test_limiter_is_per_runtime():
         assert_locked(await login(first["client"]))
     async with hub() as second:
         assert (await login(second["client"])).status_code == 200
+
+
+async def test_lockout_is_scoped_to_the_client_address():
+    """A stranger's five wrong passwords lock the stranger, not the owner on their own phone."""
+    async with hub(HUB_TRUST_PROXY_HEADERS=True) as h:
+        http, clock = h["client"], h["clock"]
+        attacker = {"X-Forwarded-For": "203.0.113.66"}
+        owner = {"X-Forwarded-For": "198.51.100.7"}
+        for _ in range(5):
+            assert (await login(http, password="wrong-wrong", headers=attacker)).status_code == 401
+        assert_locked(await login(http, headers=attacker))  # the attacker is locked, right password or not
+        clock.advance(60)  # the stranger can still fill the per-account minute window; that denial ends with it
+        assert (await login(http, headers=owner)).status_code == 200  # the owner is not locked
+        # the owner's own typos still lock the owner's own address (the brake against a local guesser stays)
+        clock.advance(60)
+        for _ in range(5):
+            assert (await login(http, password="typo-typo", headers=owner)).status_code == 401
+        assert_locked(await login(http, headers=owner))
+        clock.advance(900)
+        assert (await login(http, headers=owner)).status_code == 200
+        # the per-account window still brakes guessing spread over many addresses: 5 attempts per minute in total
+        clock.advance(60)  # past the owner's successful login above, which counted in the window
+        for i in range(5):
+            assert (await login(http, password="guess", headers={"X-Forwarded-For": f"203.0.113.{i}"})).status_code == 401
+        assert_rate_limited(await login(http, password="guess", headers={"X-Forwarded-For": "203.0.113.200"}))

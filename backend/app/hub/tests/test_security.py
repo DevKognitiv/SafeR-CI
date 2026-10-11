@@ -776,3 +776,27 @@ async def test_sos_input_validation(client, auth, home):
     assert (await client.post(url, json={"address": "x" * 301}, headers=headers)).status_code == 422
     ok = await client.post(url, json={"address": "x" * 300, "address_confirmed": True}, headers=headers)
     assert ok.status_code == 201 and ok.json()["address"] == "x" * 300
+
+
+async def test_sos_zero_coordinates_are_not_a_fix(strict_incidents):
+    """``(0, 0)`` is the "no fix" sentinel, not a position in the Gulf of Guinea: the address gate applies."""
+    hub = strict_incidents
+    other = await home_without_position(hub)
+    response = await raise_sos_http(hub, other["id"], {"lat": 0, "lon": 0})
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"]["code"] == "position_required"
+    # with a confirmed address the alert goes through, flagged as default position (never as a GPS fix)
+    response = await raise_sos_http(hub, other["id"], {"lat": 0.0, "lon": 0.0, "address": "Marché de Treichville", "address_confirmed": True})
+    assert response.status_code == 201, response.text
+    sent = await last_incident(hub)
+    assert sent["location_source"] == "default" and sent["location_confidence"] == "none"
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0083)
+
+
+async def test_sos_zero_coordinates_fall_back_to_the_home(incidents):
+    home = incidents["home"]
+    response = await raise_sos_http(incidents, home["id"], {"lat": 0, "lon": 0})
+    assert response.status_code == 201, response.text
+    sent = await last_incident(incidents)
+    assert (sent["location_lat"], sent["location_lon"]) == (5.36, -4.0)
+    assert sent["location_source"] == "home" and sent["location_confidence"] == "home"

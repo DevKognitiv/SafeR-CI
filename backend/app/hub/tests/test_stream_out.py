@@ -14,7 +14,9 @@ from app.hub.adapters.registry import registry
 from app.hub.app import create_app
 from app.hub.capabilities import camera_caps
 from app.hub.runtime import set_runtime
-from app.hub.schemas import DeviceOut, StreamOut, split_userinfo
+from app.hub.models import Device
+from app.hub.schemas import DeviceOut, StreamOut, scrub_credentials, split_userinfo
+from app.hub.services.device_service import _serialize_device
 from app.hub.tests.conftest import PREFIX, make_settings, register_user
 
 SECRET = "s3cret@lan"
@@ -172,3 +174,43 @@ def test_fake_camera_pairs_with_credentials_in_vault_only(fake_camera):
     assert SECRET not in json.dumps(draft.config) and SECRET not in json.dumps(draft.state)
     assert isinstance(fake_camera.stream_info, StreamInfo)
     assert [m.id for m in fake_camera.info().methods] == ["manual"]
+
+
+LEGACY_STATE = {
+    "stream_main": "rtsp://admin:s3cret-pw@192.168.1.10:554/main",
+    "snapshot": "http://admin:s3cret%40lan@192.168.1.10/snap.jpg",
+    "profiles": [{"url": "rtsp://admin:s3cret-pw@192.168.1.10:554/sub", "name": "sub"}],
+    "nested": {"onvif": "http://admin:pw@192.168.1.10/onvif/device_service"},
+    "online": True, "note": "mail me at admin@example.com", "count": 2,
+}
+CLEAN_STATE = {
+    "stream_main": "rtsp://192.168.1.10:554/main",
+    "snapshot": "http://192.168.1.10/snap.jpg",
+    "profiles": [{"url": "rtsp://192.168.1.10:554/sub", "name": "sub"}],
+    "nested": {"onvif": "http://192.168.1.10/onvif/device_service"},
+    "online": True, "note": "mail me at admin@example.com", "count": 2,
+}
+
+
+def test_scrub_credentials_walks_the_state():
+    assert scrub_credentials(LEGACY_STATE) == CLEAN_STATE
+    assert scrub_credentials(None) is None and scrub_credentials("rtsp://cam/x") == "rtsp://cam/x"
+    assert "s3cret" not in json.dumps(scrub_credentials(LEGACY_STATE))
+
+
+def test_device_out_scrubs_legacy_credentials_from_state():
+    """A camera paired before the hub stripped advertised URIs still has them in its persisted state."""
+    out = DeviceOut(
+        id="d1", home_id="h1", name="Caméra", brand="onvif", protocol="onvif", category="camera", external_id="urn:1",
+        state=LEGACY_STATE, created_at="2026-10-11T10:00:00Z", updated_at="2026-10-11T10:00:00Z",
+    )
+    assert out.state == CLEAN_STATE
+    assert "s3cret" not in out.model_dump_json()
+
+
+def test_websocket_device_payload_scrubs_legacy_credentials():
+    device = Device(id="d1", home_id="h1", name="Caméra", brand="onvif", protocol="onvif", category="camera",
+                    external_id="urn:1", state=dict(LEGACY_STATE))
+    payload = _serialize_device(device)
+    assert payload["state"] == CLEAN_STATE
+    assert "s3cret" not in json.dumps(payload)

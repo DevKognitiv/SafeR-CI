@@ -78,11 +78,20 @@ python -m alembic -c alembic.ini -x url=sqlite:////tmp/rehearsal.db downgrade -1
 python -m alembic -c alembic.ini -x url=sqlite:////tmp/rehearsal.db upgrade head
 ```
 
-Rules: revision ids are `NNNN_slug`, every revision has a working `downgrade()`, and
+Rules: revision ids are `NNNN_slug` (the file is named after the id: `alembic.ini` sets
+`file_template = %(rev)s`), every revision has a working `downgrade()`, and
 `tests/test_migrations.py` fails when the models and the migrations disagree (`compare_metadata`
 after `upgrade head` must be empty), so add a revision in the same change as the model edit. SQLite
-cannot alter columns in place: `op.batch_alter_table` recreates the table, which is why the baseline
-and every revision use batch mode.
+cannot alter or drop columns in place, so a revision that changes or drops a column uses
+`op.batch_alter_table`, which recreates the table; adding a column (`0002`) is a plain `ALTER`.
+
+Startup migrations are serialised: on SQLite the hub takes the write lock before inspecting the schema
+(`BEGIN IMMEDIATE`, 30 s `busy_timeout`), on PostgreSQL it holds a transaction advisory lock, so two
+hub processes or a hub and a manual `alembic upgrade` starting together wait for each other instead
+of one crashing on "table already exists". On SQLite the runtime also switches `PRAGMA foreign_keys`
+off for the migration: a batch recreate (`DROP TABLE` + rename) would otherwise cascade-delete every
+child row. Only hub tables are inspected; the main API's tables on a shared `DATABASE_URL` are never
+mistaken for drift.
 
 ## Security on `/auth`
 
@@ -90,14 +99,16 @@ and every revision use batch mode.
 limiter (`ratelimit.py`, one instance per runtime): `HUB_LOGIN_PER_IP_PER_MINUTE`,
 `HUB_LOGIN_PER_ACCOUNT_PER_MINUTE`, `HUB_REGISTER_PER_IP_PER_HOUR`,
 `HUB_PUSH_TOKEN_PER_USER_PER_MINUTE`, and `HUB_LOGIN_LOCKOUT_THRESHOLD` consecutive failed logins
-on one e-mail within `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` lock it for `HUB_LOGIN_LOCKOUT_SECONDS`.
+on one e-mail *from one client address* within `HUB_LOGIN_LOCKOUT_WINDOW_SECONDS` lock that pair for
+`HUB_LOGIN_LOCKOUT_SECONDS` (a stranger's failures never lock the owner out of their own phone; the
+per-account window above is the brake on guessing from many addresses).
 Over-limit requests answer `429` and locked accounts `423`, both with a `Retry-After` header and a
 `detail` object `{"code": "rate_limited" | "account_locked", "message", "retry_after"}`. Unknown
 e-mails are counted, locked and bcrypt-checked exactly like existing ones so nothing reveals which
-accounts exist. The client IP is the TCP peer unless `HUB_TRUST_PROXY_HEADERS=true` (then the first
-`X-Forwarded-For` entry when it is a valid IP address, only behind a proxy you control that
-*overwrites* the header, e.g. nginx `proxy_set_header X-Forwarded-For $remote_addr`; an appending
-proxy would let clients choose their own entry). Counters are per process: Raspberry Pi
+accounts exist. The client IP is the TCP peer unless `HUB_TRUST_PROXY_HEADERS=true` (then the *last*
+`X-Forwarded-For` entry when it is a valid IP address: the one your proxy added for the peer it saw,
+e.g. nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`; set the flag only when the
+hub is reachable through that proxy alone). Counters are per process: Raspberry Pi
 hubs run one uvicorn worker; a multi-worker deployment needs a shared store (Redis) behind the same
 interface before the limits mean anything globally.
 

@@ -1,15 +1,24 @@
 """Alembic migration tests, run programmatically (no CLI): fresh upgrade, legacy hub stamping, models in sync."""
 from __future__ import annotations
 
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from alembic import command
-from app.hub.db import Base
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
+from app.hub import migrations
+from app.hub.db import Base, Database
 from app.hub.migrations import (
-    BASELINE_REVISION, VERSION_TABLE, alembic_config, current_revision, head_revision, migrate_connection, schema_diff,
+    BASELINE_REVISION, VERSION_TABLE, alembic_config, current_revision, head_revision, migrate_async, migrate_connection,
+    schema_diff,
 )
+from app.hub.models import Home, Room
 from app.hub.runtime import HubRuntime, set_runtime
 from app.hub.tests.conftest import make_settings
 
@@ -161,3 +170,78 @@ def test_migration_env_needs_no_hub_settings(tmp_path, monkeypatch):
     with engine.connect() as conn:
         assert current_revision(conn) == HEAD
     engine.dispose()
+
+
+def test_foreign_tables_on_a_shared_database_are_not_drift(tmp_path):
+    """The main API's tables share DATABASE_URL: a current hub schema next to them is stamped head, not replayed."""
+    engine = create_engine(sqlite_url(tmp_path / "shared.db"))
+    Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE incidents (id INTEGER PRIMARY KEY, kind VARCHAR(20))"))
+        connection.execute(text("CREATE TABLE spatial_ref_sys (srid INTEGER PRIMARY KEY)"))
+    with engine.begin() as connection:
+        assert schema_diff(connection) == []
+        assert migrate_connection(connection) == "stamped_head"
+    with engine.connect() as connection:
+        assert current_revision(connection) == HEAD
+        assert {"incidents", "spatial_ref_sys"} <= set(inspect(connection).get_table_names())
+    with engine.begin() as connection:
+        assert migrate_connection(connection) == "upgraded"  # a second start is a no-op
+
+
+async def test_batch_recreate_during_a_migration_keeps_child_rows(monkeypatch):
+    """SQLite batch mode drops and recreates the table; with foreign keys on that would cascade-delete every child."""
+    db = Database("sqlite+aiosqlite://")
+    try:
+        assert await migrate_async(db.engine) == "created"
+        async with AsyncSession(db.engine, expire_on_commit=False) as session:
+            home = Home(name="Maison")
+            session.add(home)
+            await session.flush()
+            session.add(Room(home_id=home.id, name="Salon"))
+            await session.commit()
+
+        def recreate(connection) -> str:
+            context = MigrationContext.configure(connection, opts={"version_table": VERSION_TABLE, "render_as_batch": True})
+            with Operations.context(context) as op:
+                with op.batch_alter_table("hub_homes", recreate="always") as batch:
+                    batch.alter_column("name", existing_type=Base.metadata.tables["hub_homes"].c.name.type)
+            assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 0
+            return "recreated"
+
+        monkeypatch.setattr(migrations, "migrate_connection", recreate)
+        assert await migrate_async(db.engine) == "recreated"
+        async with AsyncSession(db.engine) as session:
+            assert len((await session.execute(select(Room))).scalars().all()) == 1
+            # enforcement is back on for the runtime: deleting the home cascades to the room again
+            await session.delete((await session.execute(select(Home))).scalar_one())
+            await session.commit()
+            assert (await session.execute(select(Room))).scalars().all() == []
+        async with db.engine.connect() as connection:
+            assert (await connection.exec_driver_sql("PRAGMA foreign_keys")).scalar() == 1
+    finally:
+        await db.engine.dispose()
+
+
+def test_concurrent_startups_serialise_on_sqlite(tmp_path):
+    """Two hub processes starting on the same fresh file: one creates, the other waits and finds the schema."""
+    url = f"sqlite+aiosqlite:///{tmp_path / 'race.db'}"
+    barrier = threading.Barrier(2)
+
+    def start(worker: int) -> str:
+        async def run() -> str:
+            engine = create_async_engine(url)
+            try:
+                barrier.wait(timeout=10)
+                return await migrate_async(engine)
+            finally:
+                await engine.dispose()
+        return asyncio.run(run())
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(start, [0, 1]))
+    assert results == ["created", "upgraded"] or results == ["created", "stamped_head"], results
+    engine = create_engine(sqlite_url(tmp_path / "race.db"))
+    with engine.connect() as connection:
+        assert current_revision(connection) == HEAD
+        assert "hub_sos_alerts" in inspect(connection).get_table_names()

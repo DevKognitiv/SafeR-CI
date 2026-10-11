@@ -32,7 +32,7 @@ from app.hub.services.device_service import DeviceService
 logger = logging.getLogger("safer.hub.sos")
 
 __all__ = [
-    "raise_sos", "forward_sos", "forward_later", "build_incident_payload", "resolve_position", "Position",
+    "raise_sos", "forward_sos", "forward_later", "build_incident_payload", "resolve_position", "is_fix", "Position",
     "PositionRequired", "DEFAULT_LAT", "DEFAULT_LON", "SOS_TITLE", "UNKNOWN_POSITION_PREFIX",
     "LOCATION_PHONE", "LOCATION_HOME", "LOCATION_DEFAULT",
 ]
@@ -90,11 +90,16 @@ def _display_name(user: User) -> str:
     return (getattr(user, "name", "") or "").strip() or getattr(user, "email", "") or "Un membre"
 
 
+def is_fix(lat: Optional[float], lon: Optional[float]) -> bool:
+    """A usable coordinate pair: both present and not the ``(0, 0)`` "no fix" sentinel phones and panels emit."""
+    return lat is not None and lon is not None and not (float(lat) == 0.0 and float(lon) == 0.0)
+
+
 def resolve_position(lat: Optional[float], lon: Optional[float], home: Home) -> Position:
-    """Phone position when complete, else the home's, else the Abidjan-Plateau default (never mixes sources)."""
-    if lat is not None and lon is not None:
+    """Phone position when it is a fix, else the home's, else the Abidjan-Plateau default (never mixes sources)."""
+    if is_fix(lat, lon):
         return Position(float(lat), float(lon), LOCATION_PHONE)
-    if home.lat is not None and home.lon is not None:
+    if is_fix(home.lat, home.lon):
         return Position(float(home.lat), float(home.lon), LOCATION_HOME)
     return Position(DEFAULT_LAT, DEFAULT_LON, LOCATION_DEFAULT)
 

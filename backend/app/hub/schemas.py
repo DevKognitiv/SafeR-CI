@@ -217,6 +217,12 @@ class DeviceOut(ORMModel):
             return {k: v for k, v in value.items() if k != "webhook_secret"}
         return value
 
+    @field_validator("state", mode="before")
+    @classmethod
+    def _public_state(cls, value: Any) -> Any:
+        """Credentials a camera embedded in an advertised URL (pairings older than the stripping) never leave the hub."""
+        return scrub_credentials(value)
+
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
@@ -259,6 +265,22 @@ def split_userinfo(url: str) -> Tuple[str, Optional[str], Optional[str]]:
     user, has_password, password = userinfo.partition(":")
     clean = urlunsplit((parts.scheme, hostport, parts.path, parts.query, parts.fragment))
     return clean, unquote(user) or None, unquote(password) if has_password else None
+
+
+def scrub_credentials(value: Any) -> Any:
+    """``value`` with ``user:pass@`` removed from every URL-shaped string, recursively (dicts and lists).
+
+    Device state is readable by every member of a home and travels in ``DeviceOut`` and in the WebSocket device
+    events. Cameras paired before the hub stripped advertised URIs may still hold credentials there; this keeps
+    them inside the hub whatever payload carries the state (``stream()`` injects them when a player needs them).
+    """
+    if isinstance(value, dict):
+        return {key: scrub_credentials(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [scrub_credentials(item) for item in value]
+    if isinstance(value, str) and "@" in value and "://" in value:
+        return split_userinfo(value)[0]
+    return value
 
 
 class StreamOut(BaseModel):
